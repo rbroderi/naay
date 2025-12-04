@@ -1,0 +1,23 @@
+[project]
+name = "naay"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "rbroderi", email = "richard.broderick@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "maturin>=1.10.2",
+    "ruamel.yaml>=0.18",
+    "pyyaml>=6",
+    "rust-just>=1.43.1",
+    "types-pyyaml>=6.0.12.20250915",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

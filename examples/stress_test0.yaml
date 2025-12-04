@@ -1,0 +1,196 @@
+_naay_version: "2025.12.03-0"
+
+# a comment test
+campaign:
+  name: "Shattered Realms"
+  start_date: "2025-01-15" #comment after value
+  status: "ACTIVE"
+  description: |
+    A sprawling planar campaign featuring fractured dimensions,
+    six rival factions, and an ever-shifting political landscape.
+    Designed explicitly as a stress test for the naay data loader.
+  difficulty_scale: "EPIC"
+  sessions_completed: "42"
+  milestones:
+    - "Liberated the Azure Archive"
+    - "Repaired the Celestial Loom"
+    - "Brokered peace between Emberkin and Tidebound"
+
+defaults: &npc_defaults
+  species: "Human"
+  alignment: "TRUE NEUTRAL"
+  status: "ACTIVE"
+  locale: "Shattered City"
+
+npc:
+  - <<: *npc_defaults
+    name: "Elyndra"
+    species: "Elf"
+    role: "Skald"
+    description: |
+      A wandering bard.
+      Her songs echo forgotten ages and stabilize rifts.
+  - name: "Thorin"
+    species: "Human"
+    alignment: "LAWFUL GOOD"
+    role: "Guardian"
+    description: |
+      A seasoned warrior with a kind heart.
+  - name: "Seraphine"
+    species: "Aasimar"
+    alignment: "CHAOTIC GOOD"
+    role: "Planar Cartographer"
+    description: |
+      Charts unstable portals with luminous ink.
+      Maintains the atlas of possible timelines.
+  - name: "Kerrik"
+    species: "Dragonborn"
+    alignment: "LAWFUL NEUTRAL"
+    role: "Logistics"
+    description: |
+      Manages supply caravans between drifting islands.
+      Obsessed with punctuality and inventory accuracy.
+  - name: "Vela Nyss"
+    species: "Tiefling"
+    alignment: "CHAOTIC NEUTRAL"
+    role: "Spy"
+    description: |
+      Maintains a network of crystal flies.
+      Reports on faction betrayals via dream-sending.
+  - name: "Brother Calem"
+    alignment: "LAWFUL GOOD"
+    role: "Healer"
+    description: |
+      Wields mirrored gauntlets that erase wounds.
+      Secretly searching for a lost sibling trapped in stasis.
+  - name: "Mira the Quiet"
+    alignment: "TRUE NEUTRAL"
+    role: "Archivist"
+    description: |
+      Guards speechless tomes.
+      Communicates via animated sigils.
+  - name: "Captain Roan"
+    alignment: "CHAOTIC GOOD"
+    role: "Skyship Ace"
+    description: |
+      Pilots the Tempest Finch through shard storms.
+      Collector of antique compasses.
+  - name: "Eldric"
+    alignment: "LAWFUL EVIL"
+    role: "Diplomat"
+    description: |
+      Broker who trades in memories.
+      Smiles only when a contract seals.
+  - name: "Nyra"
+    alignment: "CHAOTIC EVIL"
+    role: "Duelist"
+    description: |
+      Hunts demigods for sport.
+      Keeps her victories etched on silver bones.
+
+factions:
+  - name: "Emberkin Compact"
+    motive: "Harness volcanic shards"
+    resources:
+      soldiers: "400"
+      skyships: "3"
+      envoys: "9"
+  - name: "Tidebound Chorus"
+    motive: "Stabilize aquatic gates"
+    resources:
+      sprites: "1200"
+      leviathans: "2"
+      oracles: "11"
+  - name: "Verdant Synod"
+    motive: "Regrow lost continents"
+    resources:
+      seed_vaults: "57"
+      druids: "85"
+      titans: "1"
+  - name: "Glass Concordat"
+    motive: "Monetize prophetic mirrors"
+    resources:
+      auditors: "33"
+      mirrors: "201"
+      assassins: "5"
+
+quests:
+  - id: "SR-001"
+    title: "Seal the Obsidian Fault"
+    urgency: "HIGH"
+    status: "COMPLETE"
+    summary: |
+      Players forged planar anchors from chorus shards,
+      preventing a chain reaction that would have erased
+      four minor realities.
+  - id: "SR-002"
+    title: "Unmask the Memory Broker"
+    urgency: "MEDIUM"
+    status: "IN_PROGRESS"
+    summary: |
+      Investigating Eldric's contracts to discover which
+      memories he siphoned from the Emberkin leadership.
+  - id: "SR-003"
+    title: "Escort the Tempest Finch"
+    urgency: "LOW"
+    status: "PENDING"
+    summary: |
+      Skyship convoy slated to cross the Maelstrom Stair;
+      requires artifact-grade wards to survive.
+
+locations:
+  shattered_city:
+    population: "1_500_000"
+    description: |
+      Capital suspended across layered gravity wells.
+      Streets realign every dawn according to civic lotteries.
+    districts:
+      - name: "Glimmer Ward"
+        specialty: "Illusion markets"
+      - name: "Anchor Spire"
+        specialty: "Dimensional engineering"
+      - name: "Bastion Verge"
+        specialty: "Military academies"
+  azure_archive:
+    status: "SEALED"
+    wards: "17"
+    caretakers: "Mira the Quiet"
+    description: |
+      Repository of voices extracted from dying worlds.
+      Access requires a silence oath and mirrored attire.
+
+lore:
+  prophecies:
+    oldest: |
+      When seven shards align above the fractured throne,
+      the final chord will either mend the realms or
+      erase melody forever.
+    current_cycle: |
+      Two shards have aligned; stormlight flickers;
+      Elyndra's next performance may decide everything.
+  relics:
+    celestial_loom:
+      status: "REPAIRED"
+      tenders:
+        - "Seraphine"
+        - "Mira the Quiet"
+    echo_blade:
+      status: "MISSING"
+      last_seen: "Nyra"
+      notes: |
+        Weapon that sings every strike as a chorus.
+        Tone grows darker with each unjust duel.
+
+telemetry:
+  ingestion_tests:
+    - name: "baseline"
+      file_bytes: "2_048"
+      comments: "Original compact sample"
+    - name: "expanded"
+      file_bytes: "16_384"
+      comments: "Current version with extended fixtures"
+    - name: "stress"
+      file_bytes: "65_536"
+      comments: |
+        Placeholder for future mega-sample including
+        hundreds of NPCs and quest chains.
