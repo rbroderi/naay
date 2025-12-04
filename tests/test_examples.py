@@ -15,5 +15,6 @@ def test_stress_fixture_parses() -> None:
     )
     text = fixture.read_text(encoding="utf-8")
     data = naay.loads(text)
+    assert isinstance(data, dict)
     assert "npc" in data
     assert isinstance(data["npc"], list)

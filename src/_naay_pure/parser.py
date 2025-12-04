@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Final
 
+try:
+    from beartype.claw import beartype_this_package
+
+    beartype_this_package()
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    pass
+
+# ruff: noqa: PLR0911
 YamlValue = str | list["YamlValue"] | dict[str, "YamlValue"]
+
 
 REQUIRED_VERSION = "2025.12.03-0"
 
@@ -27,14 +37,12 @@ class Line:
 
 def loads(text: str, /) -> YamlValue:
     """Parse naay text into nested dict/list/scalar structures."""
-
     parser = _Parser(text)
     return parser.parse()
 
 
 def dumps(data: YamlValue, /) -> str:
     """Serialize a naay-compatible tree back into text."""
-
     dumper = _Dumper()
     try:
         dumper.write_value(data, 0)
@@ -52,18 +60,21 @@ class _Parser:
     # Public -----------------------------------------------------------------
     def parse(self) -> YamlValue:
         if not self.lines:
+            msg = "missing required _naay_version at root (Semantic Date Versioning)"
             raise NaayParseError(
-                "missing required _naay_version at root (Semantic Date Versioning)"
+                msg,
             )
         # Decide whether root is a map or sequence based on the first non-comment line
         first_idx = self._skip_comments(self.index)
         if first_idx >= len(self.lines):
+            msg = "missing required _naay_version at root (Semantic Date Versioning)"
             raise NaayParseError(
-                "missing required _naay_version at root (Semantic Date Versioning)"
+                msg,
             )
         self.index = first_idx
         first_line = self.lines[self.index]
         base_indent = first_line.indent
+        value: YamlValue
         if self._looks_like_seq(first_line):
             value = self._parse_seq(base_indent)
         else:
@@ -108,8 +119,9 @@ class _Parser:
             stripped, _ = _split_inline_comment(line.content)
             colon_pos = stripped.find(":")
             if colon_pos == -1:
+                msg = f"expected ':' in mapping entry (line {line.line_no})"
                 raise NaayParseError(
-                    f"expected ':' in mapping entry (line {line.line_no})"
+                    msg,
                 )
             key_raw = stripped[:colon_pos].strip()
             value_raw = stripped[colon_pos + 1 :].lstrip()
@@ -126,7 +138,10 @@ class _Parser:
 
     # Value handlers ----------------------------------------------------------
     def _parse_seq_value(
-        self, after_dash: str, base_indent: int, line: Line
+        self,
+        after_dash: str,
+        base_indent: int,
+        line: Line,
     ) -> YamlValue:
         if not after_dash:
             if (
@@ -172,12 +187,16 @@ class _Parser:
         return _strip_quotes(vpart)
 
     def _parse_inline_map(
-        self, payload: str, base_indent: int, line: Line
+        self,
+        payload: str,
+        base_indent: int,
+        line: Line,
     ) -> dict[str, YamlValue]:
         colon_pos = payload.find(":")
         if colon_pos == -1:
+            msg = f"expected ':' inside inline map (line {line.line_no})"
             raise NaayParseError(
-                f"expected ':' inside inline map (line {line.line_no})"
+                msg,
             )
         key = _parse_key(payload[:colon_pos].strip())
         remainder = payload[colon_pos + 1 :].lstrip()
@@ -194,10 +213,20 @@ class _Parser:
         return mapping
 
     def _parse_inline_value(
-        self, vpart: str, line: Line, expected_indent: int
+        self,
+        vpart: str,
+        line: Line,
+        expected_indent: int,
     ) -> YamlValue:
-        if (vpart.startswith('"') and vpart.endswith('"') and len(vpart) >= 2) or (
-            vpart.startswith("'") and vpart.endswith("'") and len(vpart) >= 2
+        min_quote_len: Final = 2
+        if (
+            vpart.startswith('"')
+            and vpart.endswith('"')
+            and len(vpart) >= min_quote_len
+        ) or (
+            vpart.startswith("'")
+            and vpart.endswith("'")
+            and len(vpart) >= min_quote_len
         ):
             return _strip_quotes(vpart)
         if vpart == "|":
@@ -208,9 +237,8 @@ class _Parser:
                 self.index >= len(self.lines)
                 or self.lines[self.index].indent <= expected_indent - 1
             ):
-                raise NaayParseError(
-                    f"anchor without nested value (line {line.line_no})"
-                )
+                msg = f"anchor without nested value (line {line.line_no})"
+                raise NaayParseError(msg)
             child_indent = self.lines[self.index].indent
             child = self._parse_block(child_indent)
             cloned = _clone_value(child)
@@ -222,20 +250,21 @@ class _Parser:
 
     # Low-level helpers -------------------------------------------------------
     def _merge_into(
-        self, target: dict[str, YamlValue], value: YamlValue, line: Line
+        self,
+        target: dict[str, YamlValue],
+        value: YamlValue,
+        line: Line,
     ) -> None:
         if isinstance(value, list):
             for item in value:
                 if not isinstance(item, dict):
-                    raise NaayParseError(
-                        f"merge list entries must be mappings (line {line.line_no})"
-                    )
+                    msg = f"merge list entries must be mappings (line {line.line_no})"
+                    raise NaayParseError(msg)
                 self._merge_into(target, item, line)
             return
         if not isinstance(value, dict):
-            raise NaayParseError(
-                f"merge source must be a mapping (line {line.line_no})"
-            )
+            msg = f"merge source must be a mapping (line {line.line_no})"
+            raise NaayParseError(msg)
         for mk, mv in value.items():
             target.setdefault(mk, _clone_value(mv))
 
@@ -255,7 +284,8 @@ class _Parser:
             self.index >= len(self.lines)
             or self.lines[self.index].indent <= base_indent
         ):
-            raise NaayParseError(f"anchor without nested value (line {line.line_no})")
+            msg = f"anchor without nested value (line {line.line_no})"
+            raise NaayParseError(msg)
         child_indent = self.lines[self.index].indent
         return self._parse_block(child_indent)
 
@@ -278,7 +308,8 @@ class _Parser:
 
     def _resolve_alias(self, name: str, line: Line) -> YamlValue:
         if name not in self.anchors:
-            raise NaayParseError(f"unknown anchor '{name}' (line {line.line_no})")
+            msg = f"unknown anchor '{name}' (line {line.line_no})"
+            raise NaayParseError(msg)
         return _clone_value(self.anchors[name])
 
     def _looks_like_seq(self, line: Line) -> bool:
@@ -292,31 +323,32 @@ class _Parser:
             idx += 1
         return idx
 
-    def _enforce_root_version(self, value: YamlValue, line_no: int) -> None:
+    def _enforce_root_version(self, value: YamlValue, _line_no: int) -> None:
         if not isinstance(value, dict):
-            raise NaayParseError("root of document must be a mapping")
+            msg = "root of document must be a mapping"
+            raise NaayParseError(msg)
         ver = value.get("_naay_version")
         if not isinstance(ver, str):
+            msg = "missing required _naay_version at root (Semantic Date Versioning)"
             raise NaayParseError(
-                "missing required _naay_version at root (Semantic Date Versioning)"
+                msg,
             )
         if not _validate_version(ver):
-            raise NaayParseError(
-                f"invalid _naay_version '{ver}', expected YYYY.MM.DD-REV"
-            )
+            msg = f"invalid _naay_version '{ver}', expected YYYY.MM.DD-REV"
+            raise NaayParseError(msg)
         if ver != REQUIRED_VERSION:
-            raise NaayParseError(
-                f"unsupported _naay_version '{ver}', expected {REQUIRED_VERSION}"
-            )
+            msg = f"unsupported _naay_version '{ver}', expected {REQUIRED_VERSION}"
+            raise NaayParseError(msg)
 
     @staticmethod
     def _preprocess(text: str) -> list[Line]:
         lines: list[Line] = []
         for idx, raw in enumerate(text.splitlines()):
             if "\t" in raw:
-                raise NaayParseError(
+                msg = (
                     f"tabs are not allowed; use spaces for indentation (line {idx + 1})"
                 )
+                raise NaayParseError(msg)
             stripped = raw.rstrip()
             content = stripped.lstrip()
             if not content:
@@ -331,14 +363,12 @@ class _Dumper:
         self._parts: list[str] = []
 
     def write_value(self, value: YamlValue, indent: int) -> None:
-        if isinstance(value, str):
-            self._write_scalar(value, indent)
-        elif isinstance(value, list):
+        if isinstance(value, list):
             self._write_seq(value, indent)
         elif isinstance(value, dict):
             self._write_map(value, indent)
-        else:  # pragma: no cover - defensive
-            raise TypeError(f"Unsupported type for naay dump: {type(value)!r}")
+        else:
+            self._write_scalar(value, indent)
 
     def render(self) -> str:
         return "".join(self._parts)
@@ -363,11 +393,9 @@ class _Dumper:
             elif isinstance(item, list):
                 self._parts.append("\n")
                 self._write_seq(item, indent + 2)
-            elif isinstance(item, dict):
+            else:
                 self._parts.append("\n")
                 self._write_map(item, indent + 2)
-            else:  # pragma: no cover - defensive
-                raise TypeError(f"Unsupported type in sequence: {type(item)!r}")
 
     def _write_map(self, mapping: dict[str, YamlValue], indent: int) -> None:
         for key, value in mapping.items():
@@ -379,11 +407,9 @@ class _Dumper:
             elif isinstance(value, list):
                 self._parts.append(prefix + "\n")
                 self._write_seq(value, indent + 2)
-            elif isinstance(value, dict):
+            else:
                 self._parts.append(prefix + "\n")
                 self._write_map(value, indent + 2)
-            else:  # pragma: no cover - defensive
-                raise TypeError(f"Unsupported type in mapping: {type(value)!r}")
 
     @staticmethod
     def _format_key(key: str) -> str:
@@ -405,9 +431,13 @@ def _split_inline_comment(line: str) -> tuple[str, str | None]:
                 in_double = False
             elif not in_double:
                 in_double = True
-        elif ch == "#" and not in_single and not in_double:
-            if idx == 0 or line[idx - 1].isspace():
-                return line[:idx].rstrip(), line[idx:]
+        elif (
+            ch == "#"
+            and not in_single
+            and not in_double
+            and (idx == 0 or line[idx - 1].isspace())
+        ):
+            return line[:idx].rstrip(), line[idx:]
         if ch == "\\" and in_double and not escaped:
             escaped = True
             continue
@@ -420,8 +450,11 @@ def _parse_key(raw: str) -> str:
 
 
 def _strip_quotes(value: str) -> str:
-    if (value.startswith('"') and value.endswith('"') and len(value) >= 2) or (
-        value.startswith("'") and value.endswith("'") and len(value) >= 2
+    min_quote_len: Final = 2
+    if (
+        value.startswith('"') and value.endswith('"') and len(value) >= min_quote_len
+    ) or (
+        value.startswith("'") and value.endswith("'") and len(value) >= min_quote_len
     ):
         return value[1:-1]
     return value
@@ -436,23 +469,31 @@ def _clone_value(value: YamlValue) -> YamlValue:
 
 
 def _validate_version(ver: str) -> bool:
+    expected_parts: Final = 2
+    expected_date_parts: Final = 3
+    year_length: Final = 4
+    month_day_length: Final = 2
+    min_year: Final = 1970
+    max_month: Final = 12
+    max_day: Final = 31
+
     parts = ver.split("-")
-    if len(parts) != 2:
+    if len(parts) != expected_parts:
         return False
     date_part, rev = parts
     if not rev.isdigit() or not rev:
         return False
     date_bits = date_part.split(".")
-    if len(date_bits) != 3:
+    if len(date_bits) != expected_date_parts:
         return False
     year, month, day = date_bits
-    if not (len(year) == 4 and year.isdigit()):
+    if not (len(year) == year_length and year.isdigit()):
         return False
-    if not (len(month) == 2 and month.isdigit()):
+    if not (len(month) == month_day_length and month.isdigit()):
         return False
-    if not (len(day) == 2 and day.isdigit()):
+    if not (len(day) == month_day_length and day.isdigit()):
         return False
     year_i = int(year)
     month_i = int(month)
     day_i = int(day)
-    return year_i >= 1970 and 1 <= month_i <= 12 and 1 <= day_i <= 31
+    return year_i >= min_year and 1 <= month_i <= max_month and 1 <= day_i <= max_day

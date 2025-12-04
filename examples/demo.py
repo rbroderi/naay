@@ -6,11 +6,13 @@ import subprocess
 import sys
 from collections.abc import Callable
 from time import perf_counter
-from typing import Any, TextIO
+from typing import Any
+from typing import TextIO
 
 import ruamel.yaml
 import yaml as pyyaml
-from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.comments import CommentedSeq
 
 import naay
 
@@ -27,7 +29,6 @@ TARGETS: tuple[dict[str, str | int | bool], ...] = (
 
 def _naay_supported_for(path: pathlib.Path) -> bool:
     """Check whether naay can load the file in a separate process."""
-
     script = (
         "import pathlib, naay, sys;"
         "text = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8');"
@@ -47,7 +48,7 @@ def _naay_supported_for(path: pathlib.Path) -> bool:
         return True
     print(
         f"Skipping naay benchmarks for {path.name}: pre-check exited "
-        + f"with code {completed.returncode}"
+         f"with code {completed.returncode}",
     )
     if completed.stdout.strip():
         print("naay probe stdout:", completed.stdout.strip())
@@ -58,16 +59,14 @@ def _naay_supported_for(path: pathlib.Path) -> bool:
 
 def _read_yaml_text(path: pathlib.Path) -> str:
     """Read the YAML file, ensuring the handle is closed each time."""
-
     with path.open("r", encoding="utf-8") as handle:
         return handle.read()
 
 
 def _time_repeated_loads(
-    label: str, loader: Callable[[str], Any], *, path: pathlib.Path, runs: int
+    label: str, loader: Callable[[str], Any], *, path: pathlib.Path, runs: int,
 ) -> tuple[Any | None, float]:
     """Run loader(text) ``runs`` times, reopening the file for every iteration."""
-
     total = 0.0
     result = None
     for iteration in range(runs):
@@ -85,10 +84,9 @@ def _time_repeated_loads(
 
 
 def _time_repeated_dumps(
-    label: str, dumper: Callable[[Any, TextIO], None], data: Any, runs: int
+    label: str, dumper: Callable[[Any, TextIO], None], data: Any, runs: int,
 ) -> tuple[str | None, float]:
     """Run dumper(data, stream) ``runs`` times, writing to os.devnull each time."""
-
     total = 0.0
     for iteration in range(runs):
         with open(os.devnull, "w", encoding="utf-8") as handle:
@@ -119,7 +117,6 @@ def _pyyaml_dump_to_stream(data: Any, stream: TextIO) -> None:
 
 def _as_plain(value: Any) -> Any:
     """Convert ruamel Commented* containers into plain Python types."""
-
     if isinstance(value, CommentedMap):
         return {k: _as_plain(v) for k, v in value.items()}  # type: ignore[misc, no-any-return]
     if isinstance(value, CommentedSeq):
@@ -143,14 +140,14 @@ def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> Non
     if naay_enabled:
         print("=== naay.loads ===")
         naay_data, elapsed = _time_repeated_loads(
-            "naay.loads", naay.loads, path=yaml_path, runs=runs
+            "naay.loads", naay.loads, path=yaml_path, runs=runs,
         )
         timings.append(("naay.loads", elapsed))
         # pprint(naay_data)
 
         print("\n=== naay.dumps round-trip ===")
         naay_dump, elapsed = _time_repeated_dumps(
-            "naay.dumps", _naay_dump_to_stream, naay_data, runs
+            "naay.dumps", _naay_dump_to_stream, naay_data, runs,
         )
         timings.append(("naay.dumps", elapsed))
         # pprint(naay_dump)
@@ -159,7 +156,7 @@ def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> Non
 
     print("\n=== PyYAML safe_load ===")
     pyyaml_data, elapsed = _time_repeated_loads(
-        "PyYAML safe_load", pyyaml.safe_load, path=yaml_path, runs=runs
+        "PyYAML safe_load", pyyaml.safe_load, path=yaml_path, runs=runs,
     )
     timings.append(("PyYAML safe_load", elapsed))
     # pprint(pyyaml_data)
@@ -167,7 +164,7 @@ def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> Non
     print("\n=== PyYAML safe_dump ===")
     if pyyaml_data is not None:
         _pyyaml_dump, elapsed = _time_repeated_dumps(
-            "PyYAML safe_dump", _pyyaml_dump_to_stream, pyyaml_data, runs
+            "PyYAML safe_dump", _pyyaml_dump_to_stream, pyyaml_data, runs,
         )
     else:
         print("PyYAML safe_dump skipped: load failed")

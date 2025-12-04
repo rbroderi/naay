@@ -7,7 +7,8 @@ import pathlib
 
 import pytest
 import ruamel.yaml
-from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.comments import CommentedSeq
 
 import naay
 from _naay_pure import parser as pure_parser

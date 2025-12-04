@@ -13,16 +13,14 @@ except ImportError:  # pragma: no cover - fallback exercised in dedicated tests
 
 type YamlValue = str | list["YamlValue"] | dict[str, "YamlValue"]
 
-__all__ = ["YamlValue", "loads", "dumps", "USING_PURE_PYTHON"]
+__all__ = ["USING_PURE_PYTHON", "YamlValue", "dumps", "loads"]
 
 
 def loads(text: str, /) -> YamlValue:
     """Parse naay YAML text into nested dict/list structures."""
-
     return _native.loads(text)  # type: ignore
 
 
 def dumps(data: YamlValue, /) -> str:
     """Serialize naay-supported objects back to YAML text."""
-
     return _native.dumps(data)  # type: ignore
