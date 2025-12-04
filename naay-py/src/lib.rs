@@ -63,7 +63,7 @@ fn dumps(obj: Bound<'_, PyAny>) -> PyResult<String> {
 }
 
 #[pymodule]
-fn naay(_py: Python<'_>, m: Bound<'_, PyModule>) -> PyResult<()> {
+fn _naay_native(_py: Python<'_>, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(loads, &m)?)?;
     m.add_function(wrap_pyfunction!(dumps, &m)?)?;
     Ok(())

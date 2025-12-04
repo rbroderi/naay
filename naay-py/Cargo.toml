@@ -4,9 +4,10 @@ version = "0.2.0"
 edition = "2021"
 
 [lib]
-name = "naay"
+name = "_naay_native"
 crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.22", features = ["extension-module"] }
 naay-core = { path = "../naay-core" }
+

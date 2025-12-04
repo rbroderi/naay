@@ -317,7 +317,38 @@ fn parse_seq_impl<'a>(
                 base_indent + 2,
                 anchors,
             )?;
-            map.insert(key, node);
+            if key == "<<" {
+                if let YamlValue::Map(merge_map) = node.value {
+                    for (mk, mv) in merge_map {
+                        map.entry(mk).or_insert(mv);
+                    }
+                } else {
+                    return Err(ParseError::Generic {
+                        line: line.line_no,
+                        column: colon_pos + 1,
+                        message: "merge source must be a mapping".to_string(),
+                    });
+                }
+            } else {
+                map.insert(key, node);
+            }
+
+            if *index < lines.len() && lines[*index].indent > base_indent {
+                let child_indent = lines[*index].indent;
+                let continuation = parse_map(lines, index, child_indent, anchors)?;
+                if let YamlValue::Map(extra) = continuation {
+                    for (ek, ev) in extra {
+                        map.insert(ek, ev);
+                    }
+                } else {
+                    return Err(ParseError::Generic {
+                        line: line.line_no,
+                        column: colon_pos + 1,
+                        message: "inline mapping continuation must be a mapping".to_string(),
+                    });
+                }
+            }
+
             YamlValue::Map(map)
         } else if after_dash.starts_with('&') {
             let anchor_name = after_dash[1..].trim();

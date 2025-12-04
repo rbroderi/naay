@@ -1,6 +1,8 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+src/naay/_native*.pyd
+src/naay/__pycache__/
 build/
 dist/
 wheels/
