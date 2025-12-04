@@ -1,9 +1,12 @@
 # naay
+## Vote naay to complicated yaml syntax and parsers.
 
-A tiny strict YAML subset where **all values are strings**, plus support for `|` block literals,
+The intent of this project is to define a tiny strict YAML subset where **all values are strings**, plus support for `|` block literals,
 anchors, merges, and YAML-compatible single-line comments — implemented with a Rust core and a
 Python binding. Standalone `# ...` lines and inline comments attached to mappings/sequences are
-retained in their original positions when you round-trip through the Rust core.
+retained in their original positions when you round-trip through the Rust core. Speed of parsing and dumping is a chief concern. As well as a very small syntax.
+The syntax used retains full compatablility with yaml while only supporting a very limited subset of yaml.
+Good for configs or basic human editable data transfer.
 
 This version enforces a Semantic Date Versioning field at the root:
 
