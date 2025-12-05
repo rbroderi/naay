@@ -160,6 +160,9 @@ class _Parser:
             return _clone_value(child)
         if after_dash.startswith("*"):
             return _clone_value(self._resolve_alias(after_dash[1:].strip(), line))
+        literal = _empty_literal(after_dash)
+        if literal is not None:
+            return literal
         if ":" in after_dash:
             return self._parse_inline_map(after_dash, base_indent, line)
         return _strip_quotes(after_dash)
@@ -183,6 +186,9 @@ class _Parser:
             return _clone_value(child)
         if vpart.startswith("*"):
             return _clone_value(self._resolve_alias(vpart[1:].strip(), line))
+        literal = _empty_literal(vpart)
+        if literal is not None:
+            return literal
         return _strip_quotes(vpart)
 
     def _parse_inline_map(
@@ -245,6 +251,9 @@ class _Parser:
             return _clone_value(child)
         if vpart.startswith("*"):
             return _clone_value(self._resolve_alias(vpart[1:].strip(), line))
+        literal = _empty_literal(vpart)
+        if literal is not None:
+            return literal
         return vpart
 
     # Low-level helpers -------------------------------------------------------
@@ -480,3 +489,11 @@ def _clone_value(value: YamlValue) -> YamlValue:
     if isinstance(value, list):
         return [_clone_value(v) for v in value]
     return value
+
+
+def _empty_literal(token: str) -> YamlValue | None:
+    if token == "[]":
+        return []
+    if token == "{}":
+        return {}
+    return None

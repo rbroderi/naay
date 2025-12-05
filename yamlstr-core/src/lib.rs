@@ -50,98 +50,136 @@ fn preprocess(input: &str) -> Result<Vec<Line<'_>>, ParseError> {
             continue;
         }
 
-        let indent = trimmed.chars().take_while(|c| *c == ' ').count();
-        out.push(Line {
-            indent,
-            content: content_trimmed,
-            line_no,
-        });
-    }
-    Ok(out)
-}
-
-fn validate_version(ver: &str) -> bool {
-    ver.trim() == REQUIRED_VERSION
-}
-
-pub fn parse_naay(input: &str) -> Result<YamlValue, ParseError> {
-    let lines = preprocess(input)?;
-    if lines.is_empty() {
-        // empty document -> empty map (but will fail version check)
-        return Ok(YamlValue::Map(BTreeMap::new()));
-    }
-
-    let mut anchors: HashMap<String, YamlValue> = HashMap::new();
-    let mut index = 0usize;
-    let first_indent = lines[0].indent;
-    let value = if lines[0].content.starts_with("- ") {
-        parse_seq(&lines, &mut index, first_indent, &mut anchors)?
-    } else {
-        parse_map(&lines, &mut index, first_indent, &mut anchors)?
-    };
-
-    // Enforce root is a map with a valid _naay_version
-    let line_no = lines[0].line_no;
-    match &value {
-        YamlValue::Map(map) => {
-            match map.get("_naay_version") {
-                Some(YamlValue::Str(ver)) => {
-                    if !validate_version(ver) {
-                        return Err(ParseError::Generic {
-                            line: line_no,
-                            column: 1,
-                            message: format!(
-                                "unsupported _naay_version '{ver}', expected {REQUIRED_VERSION}"
-                            ),
-                        });
+        YamlValue::Seq(seq) => {
+            if seq.is_empty() {
+                for _ in 0..indent {
+                    out.push(' ');
+                }
+                out.push_str("[]\n");
+            } else {
+                for item in seq {
+                    for _ in 0..indent {
+                        out.push(' ');
                     }
-                }
-                Some(_) => {
-                    return Err(ParseError::Generic {
-                        line: line_no,
-                        column: 1,
-                        message: "_naay_version must be a string scalar".to_string(),
-                    });
-                }
-                None => {
-                    return Err(ParseError::Generic {
-                        line: line_no,
-                        column: 1,
-                        message:
-                            "missing required _naay_version at root (Semantic Date Versioning)"
-                                .to_string(),
-                    });
+                    out.push_str("- ");
+                    match item {
+                        YamlValue::Str(s) => {
+                            if s.contains('\n') {
+                                out.push('|');
+                                out.push('\n');
+                                for line in s.split('\n') {
+                                    for _ in 0..(indent + 2) {
+                                        out.push(' ');
+                                    }
+                                    out.push_str(line);
+                                    out.push('\n');
+                                }
+                            } else {
+                                out.push('"');
+                                for ch in s.chars() {
+                                    match ch {
+                                        '"' => out.push_str("\\""),
+                                        '\\' => out.push_str("\\\\"),
+                                        _ => out.push(ch),
+                                    }
+                                }
+                                out.push('"');
+                                out.push('\n');
+                            }
+                        }
+                        YamlValue::Seq(child) => {
+                            if child.is_empty() {
+                                out.push_str("[]\n");
+                            } else {
+                                out.push('\n');
+                                write_value(out, item, indent + 2)?;
+                            }
+                        }
+                        YamlValue::Map(child) => {
+                            if child.is_empty() {
+                                out.push_str("{}\n");
+                            } else {
+                                out.push('\n');
+                                write_value(out, item, indent + 2)?;
+                            }
+                        }
+                    }
                 }
             }
         }
-        _ => {
-            return Err(ParseError::Generic {
-                line: line_no,
-                column: 1,
-                message: "root of document must be a mapping".to_string(),
-            });
+        YamlValue::Map(map) => {
+            if map.is_empty() {
+                for _ in 0..indent {
+                    out.push(' ');
+                }
+                out.push_str("{}\n");
+            } else {
+                for (k, v) in map {
+                    for _ in 0..indent {
+                        out.push(' ');
+                    }
+                    let needs_quote =
+                        k.chars()
+                            .any(|c| c.is_whitespace() || matches!(c, ':' | '?' | '#'));
+                    if needs_quote {
+                        out.push('"');
+                        for ch in k.chars() {
+                            match ch {
+                                '"' => out.push_str("\\""),
+                                '\\' => out.push_str("\\\\"),
+                                _ => out.push(ch),
+                            }
+                        }
+                        out.push('"');
+                    } else {
+                        out.push_str(k);
+                    }
+                    out.push_str(": ");
+                    match v {
+                        YamlValue::Str(s) => {
+                            if s.contains('\n') {
+                                out.push('|');
+                                out.push('\n');
+                                for line in s.split('\n') {
+                                    for _ in 0..(indent + 2) {
+                                        out.push(' ');
+                                    }
+                                    out.push_str(line);
+                                    out.push('\n');
+                                }
+                            } else {
+                                out.push('"');
+                                for ch in s.chars() {
+                                    match ch {
+                                        '"' => out.push_str("\\""),
+                                        '\\' => out.push_str("\\\\"),
+                                        _ => out.push(ch),
+                                    }
+                                }
+                                out.push('"');
+                                out.push('\n');
+                            }
+                        }
+                        YamlValue::Seq(child) => {
+                            if child.is_empty() {
+                                out.push_str("[]\n");
+                            } else {
+                                out.push('\n');
+                                write_value(out, v, indent + 2)?;
+                            }
+                        }
+                        YamlValue::Map(child) => {
+                            if child.is_empty() {
+                                out.push_str("{}\n");
+                            } else {
+                                out.push('\n');
+                                write_value(out, v, indent + 2)?;
+                            }
+                        }
+                    }
+                }
+            }
         }
-    }
-
-    Ok(value)
-}
-
-fn parse_seq<'a>(
-    lines: &[Line<'a>],
-    index: &mut usize,
-    base_indent: usize,
-    anchors: &mut HashMap<String, YamlValue>,
-) -> Result<YamlValue, ParseError> {
-    let mut items = Vec::new();
-    while *index < lines.len() {
-        let line = &lines[*index];
-        if line.indent < base_indent {
-            break;
-        }
-        if line.indent > base_indent {
-            break;
-        }
-        let content = line.content;
         if !content.starts_with("- ") {
             break;
         }
@@ -160,6 +198,10 @@ fn parse_seq<'a>(
         } else if after_dash == "|" {
             let s = parse_block_scalar(lines, index, base_indent + 1)?;
             items.push(YamlValue::Str(s));
+        } else if after_dash == "[]" {
+            items.push(YamlValue::Seq(Vec::new()));
+        } else if after_dash == "{}" {
+            items.push(YamlValue::Map(BTreeMap::new()));
         } else if let Some(colon_pos) = after_dash.find(':') {
             // inline single key: value map
             let (k, vpart) = after_dash.split_at(colon_pos);
@@ -267,6 +309,10 @@ fn parse_map<'a>(
         } else if vpart == "|" {
             let s = parse_block_scalar(lines, index, base_indent + 1)?;
             map.insert(key, YamlValue::Str(s));
+        } else if vpart == "[]" {
+            map.insert(key, YamlValue::Seq(Vec::new()));
+        } else if vpart == "{}" {
+            map.insert(key, YamlValue::Map(BTreeMap::new()));
         } else if vpart.starts_with('&') {
             let anchor_name = vpart[1..].trim();
             if *index >= lines.len() || lines[*index].indent <= base_indent {
@@ -347,6 +393,12 @@ fn parse_value_inline<'a>(
     }
 
     // Case 5: simple string scalar
+    if vpart == "[]" {
+        return Ok(YamlValue::Seq(Vec::new()));
+    }
+    if vpart == "{}" {
+        return Ok(YamlValue::Map(BTreeMap::new()));
+    }
     Ok(YamlValue::Str(vpart.to_string()))
 }
 

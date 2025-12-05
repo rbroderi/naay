@@ -258,6 +258,10 @@ fn parse_seq_impl<'a>(
         } else if after_dash == "|" {
             let s = parse_block_scalar(lines, index, base_indent + 1)?;
             YamlValue::Str(s)
+        } else if after_dash == "[]" {
+            YamlValue::Seq(Vec::new())
+        } else if after_dash == "{}" {
+            YamlValue::Map(BTreeMap::new())
         } else if let Some(colon_pos) = after_dash.find(':') {
             let (k, vpart) = after_dash.split_at(colon_pos);
             let key = parse_key(k.trim(), line.line_no)?;
@@ -431,6 +435,10 @@ fn parse_map_impl<'a>(
         } else if vpart == "|" {
             let s = parse_block_scalar(lines, index, base_indent + 1)?;
             YamlValue::Str(s)
+        } else if vpart == "[]" {
+            YamlValue::Seq(Vec::new())
+        } else if vpart == "{}" {
+            YamlValue::Map(BTreeMap::new())
         } else if vpart.starts_with('&') {
             let anchor_name = vpart[1..].trim();
             if *index >= lines.len() || lines[*index].indent <= base_indent {
@@ -523,6 +531,12 @@ fn parse_value_inline<'a>(
     }
 
     // Case 5: simple string scalar
+    if vpart == "[]" {
+        return Ok(YamlNode::new(YamlValue::Seq(Vec::new())));
+    }
+    if vpart == "{}" {
+        return Ok(YamlNode::new(YamlValue::Map(BTreeMap::new())));
+    }
     Ok(YamlNode::new(YamlValue::Str(vpart.to_string())))
 }
 
@@ -617,8 +631,28 @@ pub fn dump_naay(value: &YamlValue) -> Result<String, DumpError> {
 fn write_value(out: &mut String, value: &YamlValue, indent: usize) -> Result<(), std::fmt::Error> {
     match value {
         YamlValue::Str(s) => write_scalar(out, indent, s, None),
-        YamlValue::Seq(seq) => write_seq(out, seq, indent),
-        YamlValue::Map(map) => write_map(out, map, indent),
+        YamlValue::Seq(seq) => {
+            if seq.is_empty() {
+                for _ in 0..indent {
+                    out.push(' ');
+                }
+                out.push_str("[]\n");
+                Ok(())
+            } else {
+                write_seq(out, seq, indent)
+            }
+        }
+        YamlValue::Map(map) => {
+            if map.is_empty() {
+                for _ in 0..indent {
+                    out.push(' ');
+                }
+                out.push_str("{}\n");
+                Ok(())
+            } else {
+                write_map(out, map, indent)
+            }
+        }
     }
 }
 
@@ -684,20 +718,38 @@ fn write_seq(out: &mut String, seq: &[YamlNode], indent: usize) -> Result<(), st
                 write_scalar(out, indent, s, node.inline_comment.as_ref())?;
             }
             YamlValue::Seq(child) => {
-                if let Some(comment) = &node.inline_comment {
-                    out.push(' ');
-                    out.push_str(comment);
+                if child.is_empty() {
+                    out.push_str("[]");
+                    if let Some(comment) = &node.inline_comment {
+                        out.push(' ');
+                        out.push_str(comment);
+                    }
+                    out.push('\n');
+                } else {
+                    if let Some(comment) = &node.inline_comment {
+                        out.push(' ');
+                        out.push_str(comment);
+                    }
+                    out.push('\n');
+                    write_seq(out, child, indent + 2)?;
                 }
-                out.push('\n');
-                write_seq(out, child, indent + 2)?;
             }
             YamlValue::Map(map) => {
-                if let Some(comment) = &node.inline_comment {
-                    out.push(' ');
-                    out.push_str(comment);
+                if map.is_empty() {
+                    out.push_str("{}");
+                    if let Some(comment) = &node.inline_comment {
+                        out.push(' ');
+                        out.push_str(comment);
+                    }
+                    out.push('\n');
+                } else {
+                    if let Some(comment) = &node.inline_comment {
+                        out.push(' ');
+                        out.push_str(comment);
+                    }
+                    out.push('\n');
+                    write_map(out, map, indent + 2)?;
                 }
-                out.push('\n');
-                write_map(out, map, indent + 2)?;
             }
         }
     }
@@ -737,20 +789,38 @@ fn write_map(
                 write_scalar(out, indent, s, node.inline_comment.as_ref())?;
             }
             YamlValue::Seq(child) => {
-                if let Some(comment) = &node.inline_comment {
-                    out.push(' ');
-                    out.push_str(comment);
+                if child.is_empty() {
+                    out.push_str(" []");
+                    if let Some(comment) = &node.inline_comment {
+                        out.push(' ');
+                        out.push_str(comment);
+                    }
+                    out.push('\n');
+                } else {
+                    if let Some(comment) = &node.inline_comment {
+                        out.push(' ');
+                        out.push_str(comment);
+                    }
+                    out.push('\n');
+                    write_seq(out, child, indent + 2)?;
                 }
-                out.push('\n');
-                write_seq(out, child, indent + 2)?;
             }
             YamlValue::Map(child) => {
-                if let Some(comment) = &node.inline_comment {
-                    out.push(' ');
-                    out.push_str(comment);
+                if child.is_empty() {
+                    out.push_str(" {}");
+                    if let Some(comment) = &node.inline_comment {
+                        out.push(' ');
+                        out.push_str(comment);
+                    }
+                    out.push('\n');
+                } else {
+                    if let Some(comment) = &node.inline_comment {
+                        out.push(' ');
+                        out.push_str(comment);
+                    }
+                    out.push('\n');
+                    write_map(out, child, indent + 2)?;
                 }
-                out.push('\n');
-                write_map(out, child, indent + 2)?;
             }
         }
     }
