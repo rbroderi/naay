@@ -56,6 +56,84 @@ print("Round-tripped YAML:")
 print(out)
 ```
 
+## Benchmarks
+
+Numbers below were collected on Windows 11 (Ryzen 9 7950X / Python 3.13.2) using
+`uv run python examples/demo.py` (which exercises the real YAML fixtures) and a
+small synthetic benchmark (snippet shown later). Each value is the average wall
+clock time per operation.
+
+### `examples/stress_test0.yaml` (500 runs)
+
+| Engine            | Load avg (ms) | Dump avg (ms) | Relative to `naay` |
+|-------------------|---------------|---------------|--------------------|
+| `naay`            | **0.11**      | **0.05**      | baseline           |
+| PyYAML `safe_*`   | 10.22         | 6.09          | ~93× slower loads, ~121× slower dumps |
+| `ruamel.yaml`(safe) | 1.95       | 2.73          | ~18× slower loads, ~55× slower dumps |
+
+### `examples/stress_test1.yaml` (20 runs, deeply nested)
+
+| Engine            | Load avg (ms) | Dump avg (ms) | Notes |
+|-------------------|---------------|---------------|-------|
+| `naay`            | **3.21**      | **4.07**      | baseline |
+| PyYAML `safe_*`   | fail          | fail          | hit Python recursion depth on the first iteration |
+| `ruamel.yaml`(safe) | 19.14       | fail          | ~6× slower on load; dump also exceeded recursion depth |
+
+### Synthetic dense map (1,500 flat scalars, 200 runs)
+
+| Engine            | Load avg (ms) | Dump avg (ms) |
+|-------------------|---------------|---------------|
+| `naay`            | **1.87**      | **0.65**      |
+| PyYAML `safe_*`   | 70.15         | 34.66         |
+| `ruamel.yaml`(safe) | 19.27       | 29.97         |
+
+Even on this uniform synthetic workload, `naay` loads about **38× faster than
+PyYAML** and **10× faster than ruamel**, while dumping is **50× faster** than both.
+
+The synthetic numbers come from the following snippet (run with `uv run python`):
+
+```python
+import io
+import time
+
+import naay
+import ruamel.yaml
+import yaml as pyyaml
+
+RUNS = 200
+KEYS = 1_500
+DOC = '_naay_version: "1.0"\n' + '\n'.join(f'key{i}: "{i}"' for i in range(KEYS))
+
+ruamel_loader = ruamel.yaml.YAML(typ="safe")
+ruamel_dumper = ruamel.yaml.YAML(typ="safe")
+
+def bench_load(fn):
+   start = time.perf_counter()
+   for _ in range(RUNS):
+      fn(DOC)
+   return (time.perf_counter() - start) / RUNS
+
+def bench_dump(fn):
+   start = time.perf_counter()
+   for _ in range(RUNS):
+      fn()
+   return (time.perf_counter() - start) / RUNS
+
+naay_data = naay.loads(DOC)
+pyyaml_data = pyyaml.safe_load(DOC)
+ruamel_data = ruamel_loader.load(DOC)
+
+print("naay.loads", bench_load(naay.loads))
+print("naay.dumps", bench_dump(lambda: naay.dumps(naay_data)))
+print("PyYAML safe_load", bench_load(pyyaml.safe_load))
+print("PyYAML safe_dump", bench_dump(lambda: pyyaml.safe_dump(pyyaml_data)))
+print("ruamel safe_load", bench_load(ruamel_loader.load))
+print(
+   "ruamel safe_dump",
+   bench_dump(lambda: ruamel_dumper.dump(ruamel_data, io.StringIO())),
+)
+```
+
 ## Spec
 
 ### Required Preamble
