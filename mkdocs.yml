@@ -1,0 +1,19 @@
+site_name: Naay
+site_description: "Naay ain't all yaml"
+repo_url: https://github.com/rbroderi/naay
+site_dir: site
+theme:
+  name: material
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+markdown_extensions:
+  - admonition
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Usage: usage.md
+  - API: api.md
