@@ -11,3 +11,6 @@ wheels/
 # Virtual environments
 .venv
 **/target/
+
+# Ignore built MkDocs site
+site/
