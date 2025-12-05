@@ -28,12 +28,6 @@ def dumps(data: YamlValue, /) -> str:
 - `USING_PURE_PYTHON` is `True` when the fallback parser is active (native module missing).
 - `loads`/`dumps` delegate to the native Rust extension when available; otherwise they use the pure-Python implementation located in `src/_naay_pure/parser.py`.
 
-### mkdocstrings hook
-
-You can still rely on mkdocstrings to render detailed docstrings for the module:
-
-::: naay
-
 ## Rust Core Highlights
 
 The Rust crate `naay-core` underpins both the native extension and the documentation’s feature set:
