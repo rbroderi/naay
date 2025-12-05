@@ -1,6 +1,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+const REQUIRED_VERSION: &str = "1.0";
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum YamlValue {
     Str(String),
@@ -58,44 +60,8 @@ fn preprocess(input: &str) -> Result<Vec<Line<'_>>, ParseError> {
     Ok(out)
 }
 
-/// Validate Semantic Date Versioning: YYYY.MM.DD-REV where REV is digits
 fn validate_version(ver: &str) -> bool {
-    let mut parts = ver.split('-');
-    let date = match parts.next() {
-        Some(d) => d,
-        None => return false,
-    };
-    let rev = match parts.next() {
-        Some(r) => r,
-        None => return false,
-    };
-    if parts.next().is_some() {
-        return false;
-    }
-    if rev.is_empty() || !rev.chars().all(|c| c.is_ascii_digit()) {
-        return false;
-    }
-    let mut date_parts = date.split('.');
-    let y = match date_parts.next() {
-        Some(y) if y.len() == 4 && y.chars().all(|c| c.is_ascii_digit()) => y,
-        _ => return false,
-    };
-    let m = match date_parts.next() {
-        Some(m) if m.len() == 2 && m.chars().all(|c| c.is_ascii_digit()) => m,
-        _ => return false,
-    };
-    let d = match date_parts.next() {
-        Some(d) if d.len() == 2 && d.chars().all(|c| c.is_ascii_digit()) => d,
-        _ => return false,
-    };
-    if date_parts.next().is_some() {
-        return false;
-    }
-    // very light sanity check on ranges (not full calendar validation)
-    let year: u32 = y.parse().unwrap_or(0);
-    let month: u32 = m.parse().unwrap_or(0);
-    let day: u32 = d.parse().unwrap_or(0);
-    year >= 1970 && (1..=12).contains(&month) && (1..=31).contains(&day)
+    ver.trim() == REQUIRED_VERSION
 }
 
 pub fn parse_naay(input: &str) -> Result<YamlValue, ParseError> {
@@ -125,7 +91,7 @@ pub fn parse_naay(input: &str) -> Result<YamlValue, ParseError> {
                             line: line_no,
                             column: 1,
                             message: format!(
-                                "invalid _naay_version '{ver}', expected YYYY.MM.DD-REV"
+                                "unsupported _naay_version '{ver}', expected {REQUIRED_VERSION}"
                             ),
                         });
                     }

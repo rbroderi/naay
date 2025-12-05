@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+# mypy: disable-error-code="import"
 import io
 import pathlib
+from typing import Any
 
 import pytest
 import ruamel.yaml
@@ -12,6 +14,8 @@ from ruamel.yaml.comments import CommentedSeq
 
 import naay
 from _naay_pure import parser as pure_parser
+
+native_module: Any | None
 
 try:  # pragma: no cover - executed in native-enabled environments
     import _naay_native as native_module  # type: ignore[attr-defined]
@@ -24,19 +28,19 @@ def _fixture_text(name: str) -> str:
     return (root / "examples" / name).read_text(encoding="utf-8")
 
 
-def _ruamel_load(text: str):
+def _ruamel_load(text: str) -> Any:
     loader = ruamel.yaml.YAML(typ="safe")
     return loader.load(text)
 
 
-def _ruamel_dump(data) -> str:
+def _ruamel_dump(data: Any) -> str:
     dumper = ruamel.yaml.YAML(typ="safe")
     buffer = io.StringIO()
     dumper.dump(data, buffer)
     return buffer.getvalue()
 
 
-def _to_plain(value):
+def _to_plain(value: Any) -> Any:
     if isinstance(value, CommentedMap):
         return {k: _to_plain(v) for k, v in value.items()}
     if isinstance(value, CommentedSeq):
@@ -48,7 +52,7 @@ def _to_plain(value):
     return value
 
 
-def _stringify_scalars(value):
+def _stringify_scalars(value: Any) -> Any:
     if isinstance(value, dict):
         return {k: _stringify_scalars(v) for k, v in value.items()}
     if isinstance(value, list):
@@ -60,6 +64,7 @@ def _stringify_scalars(value):
 
 @pytest.mark.skipif(native_module is None, reason="native extension not available")
 def test_pure_and_native_match_on_fixture() -> None:
+    assert native_module is not None
     text = _fixture_text("stress_test0.yaml")
     native_data = native_module.loads(text)
     pure_data = pure_parser.loads(text)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# mypy: disable-error-code="import"
 import pathlib
 
 import pytest

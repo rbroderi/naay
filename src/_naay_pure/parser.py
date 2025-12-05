@@ -6,8 +6,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
+from naay import REQUIRED_VERSION
+
 try:
-    from beartype.claw import beartype_this_package
+    from beartype.claw import beartype_this_package  # type: ignore[import]
 
     beartype_this_package()
 except ModuleNotFoundError:  # pragma: no cover - optional dependency
@@ -15,9 +17,6 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency
 
 # ruff: noqa: PLR0911
 YamlValue = str | list["YamlValue"] | dict[str, "YamlValue"]
-
-
-REQUIRED_VERSION = "2025.12.03-0"
 
 
 class NaayParseError(ValueError):
@@ -333,10 +332,7 @@ class _Parser:
             raise NaayParseError(
                 msg,
             )
-        if not _validate_version(ver):
-            msg = f"invalid _naay_version '{ver}', expected YYYY.MM.DD-REV"
-            raise NaayParseError(msg)
-        if ver != REQUIRED_VERSION:
+        if ver.strip() != REQUIRED_VERSION:
             msg = f"unsupported _naay_version '{ver}', expected {REQUIRED_VERSION}"
             raise NaayParseError(msg)
 
@@ -364,8 +360,14 @@ class _Dumper:
 
     def write_value(self, value: YamlValue, indent: int) -> None:
         if isinstance(value, list):
+            if not value:
+                self._parts.append(" " * indent + "[]\n")
+                return
             self._write_seq(value, indent)
         elif isinstance(value, dict):
+            if not value:
+                self._parts.append(" " * indent + "{}\n")
+                return
             self._write_map(value, indent)
         else:
             self._write_scalar(value, indent)
@@ -391,9 +393,15 @@ class _Dumper:
             if isinstance(item, str):
                 self._write_scalar(item, indent)
             elif isinstance(item, list):
+                if not item:
+                    self._parts.append("[]\n")
+                    continue
                 self._parts.append("\n")
                 self._write_seq(item, indent + 2)
             else:
+                if not item:
+                    self._parts.append("{}\n")
+                    continue
                 self._parts.append("\n")
                 self._write_map(item, indent + 2)
 
@@ -405,9 +413,15 @@ class _Dumper:
                 self._parts.append(prefix + " ")
                 self._write_scalar(value, indent)
             elif isinstance(value, list):
+                if not value:
+                    self._parts.append(prefix + " []\n")
+                    continue
                 self._parts.append(prefix + "\n")
                 self._write_seq(value, indent + 2)
             else:
+                if not value:
+                    self._parts.append(prefix + " {}\n")
+                    continue
                 self._parts.append(prefix + "\n")
                 self._write_map(value, indent + 2)
 
@@ -466,34 +480,3 @@ def _clone_value(value: YamlValue) -> YamlValue:
     if isinstance(value, list):
         return [_clone_value(v) for v in value]
     return value
-
-
-def _validate_version(ver: str) -> bool:
-    expected_parts: Final = 2
-    expected_date_parts: Final = 3
-    year_length: Final = 4
-    month_day_length: Final = 2
-    min_year: Final = 1970
-    max_month: Final = 12
-    max_day: Final = 31
-
-    parts = ver.split("-")
-    if len(parts) != expected_parts:
-        return False
-    date_part, rev = parts
-    if not rev.isdigit() or not rev:
-        return False
-    date_bits = date_part.split(".")
-    if len(date_bits) != expected_date_parts:
-        return False
-    year, month, day = date_bits
-    if not (len(year) == year_length and year.isdigit()):
-        return False
-    if not (len(month) == month_day_length and month.isdigit()):
-        return False
-    if not (len(day) == month_day_length and day.isdigit()):
-        return False
-    year_i = int(year)
-    month_i = int(month)
-    day_i = int(day)
-    return year_i >= min_year and 1 <= month_i <= max_month and 1 <= day_i <= max_day

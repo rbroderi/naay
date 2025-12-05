@@ -2,7 +2,7 @@ use stacker::maybe_grow;
 use std::collections::{BTreeMap, HashMap};
 use std::mem;
 
-const REQUIRED_VERSION: &str = "2025.12.03-0";
+const REQUIRED_VERSION: &str = "1.0";
 const STACK_RED_ZONE: usize = 32 * 1024;
 const STACK_GROW: usize = 2 * 1024 * 1024;
 
@@ -133,46 +133,6 @@ fn split_inline_comment(line: &str) -> (&str, Option<&str>) {
     (line.trim_end(), None)
 }
 
-/// Validate Semantic Date Versioning: YYYY.MM.DD-REV where REV is digits
-fn validate_version(ver: &str) -> bool {
-    let mut parts = ver.split('-');
-    let date = match parts.next() {
-        Some(d) => d,
-        None => return false,
-    };
-    let rev = match parts.next() {
-        Some(r) => r,
-        None => return false,
-    };
-    if parts.next().is_some() {
-        return false;
-    }
-    if rev.is_empty() || !rev.chars().all(|c| c.is_ascii_digit()) {
-        return false;
-    }
-    let mut date_parts = date.split('.');
-    let y = match date_parts.next() {
-        Some(y) if y.len() == 4 && y.chars().all(|c| c.is_ascii_digit()) => y,
-        _ => return false,
-    };
-    let m = match date_parts.next() {
-        Some(m) if m.len() == 2 && m.chars().all(|c| c.is_ascii_digit()) => m,
-        _ => return false,
-    };
-    let d = match date_parts.next() {
-        Some(d) if d.len() == 2 && d.chars().all(|c| c.is_ascii_digit()) => d,
-        _ => return false,
-    };
-    if date_parts.next().is_some() {
-        return false;
-    }
-    // very light sanity check on ranges (not full calendar validation)
-    let year: u32 = y.parse().unwrap_or(0);
-    let month: u32 = m.parse().unwrap_or(0);
-    let day: u32 = d.parse().unwrap_or(0);
-    year >= 1970 && (1..=12).contains(&month) && (1..=31).contains(&day)
-}
-
 pub fn parse_naay(input: &str) -> Result<YamlValue, ParseError> {
     let lines = preprocess(input)?;
     if lines.is_empty() {
@@ -194,14 +154,7 @@ pub fn parse_naay(input: &str) -> Result<YamlValue, ParseError> {
     match &value {
         YamlValue::Map(map) => match map.get("_naay_version").map(|n| &n.value) {
             Some(YamlValue::Str(ver)) => {
-                if !validate_version(ver) {
-                    return Err(ParseError::Generic {
-                        line: line_no,
-                        column: 1,
-                        message: format!("invalid _naay_version '{ver}', expected YYYY.MM.DD-REV"),
-                    });
-                }
-                if ver != REQUIRED_VERSION {
+                if ver.trim() != REQUIRED_VERSION {
                     return Err(ParseError::Generic {
                         line: line_no,
                         column: 1,
@@ -295,7 +248,7 @@ fn parse_seq_impl<'a>(
         let after_dash = content_no_comment[1..].trim_start();
         *index += 1;
 
-        let value = if after_dash.is_empty() {
+            let value = if after_dash.is_empty() {
             if *index >= lines.len() || lines[*index].indent <= base_indent {
                 YamlValue::Str(String::new())
             } else {
@@ -811,8 +764,8 @@ mod tests {
     #[test]
     fn preserves_single_line_comments() {
         let input = r#"
-# preface
-_naay_version: "2025.12.03-0" # force version
+    # preface
+    _naay_version: "1.0" # force version
 defaults:
     # nested
     alignment: "TRUE NEUTRAL"

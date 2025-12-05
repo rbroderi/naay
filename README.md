@@ -8,10 +8,10 @@ retained in their original positions when you round-trip through the Rust core. 
 The syntax used retains full compatablility with yaml while only supporting a very limited subset of yaml.
 Good for configs or basic human editable data transfer.
 
-This version enforces a Semantic Date Versioning field at the root:
+This version enforces a root `_naay_version` field that must match the current release string:
 
 ```yaml
-_naay_version: "2025.12.03-0"
+_naay_version: "1.0"
 ```
 
 > **Note:** The Python binding exposes plain `dict` / `list` / `str` objects, so comment metadata

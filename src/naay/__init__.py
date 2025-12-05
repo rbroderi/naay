@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Final
+
+REQUIRED_VERSION: Final = "1.0"
+
 USING_PURE_PYTHON = False
 
 try:  # pragma: no cover - exercised indirectly via tests
@@ -12,8 +16,6 @@ except ImportError:  # pragma: no cover - fallback exercised in dedicated tests
     USING_PURE_PYTHON = True  # pyright: ignore[reportConstantRedefinition]
 
 type YamlValue = str | list["YamlValue"] | dict[str, "YamlValue"]
-
-__all__ = ["USING_PURE_PYTHON", "YamlValue", "dumps", "loads"]
 
 
 def loads(text: str, /) -> YamlValue:
