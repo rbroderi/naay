@@ -7,6 +7,9 @@ on:
 
 jobs:
   build:
+    # Grant write permission to push to gh-pages branch
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
