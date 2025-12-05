@@ -74,11 +74,21 @@ jobs:
           release: "14.1"
           usesh: true
           prepare: |
-            pkg install -y python313 py313-pip rust git pkgconf
+            pkg install -y rust git pkgconf gmake wget libarchive liblzma libffi gettext bzip2 sqlite3 openssl
           run: |
+            # Build CPython 3.13 from source because FreeBSD packages lag behind.
             cd /github/workspace
-            python3.13 -m pip install --upgrade pip maturin
-            python3.13 -m maturin build --release --out dist --interpreter python3.13
+            fetch https://www.python.org/ftp/python/3.13.0/Python-3.13.0.tgz -o /tmp/Python-3.13.0.tgz
+            cd /tmp
+            tar -xzf Python-3.13.0.tgz
+            cd Python-3.13.0
+            ./configure --prefix=/opt/python3.13 --enable-optimizations --with-ensurepip=install
+            gmake -j"$(sysctl -n hw.ncpu)"
+            gmake install
+            /opt/python3.13/bin/python3.13 -m pip install --upgrade pip maturin
+            cd /github/workspace
+            mkdir -p dist
+            /opt/python3.13/bin/python3.13 -m maturin build --release --out dist --interpreter /opt/python3.13/bin/python3.13
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
