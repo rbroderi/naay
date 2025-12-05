@@ -2,6 +2,11 @@
 name = "naay-core"
 version = "0.2.0"
 edition = "2021"
+description = "Tailcall-driven YAML subset parser/dumper powering the naay Python binding"
+license = "MIT"
+repository = "https://github.com/rbroderi/naay"
+homepage = "https://github.com/rbroderi/naay"
+documentation = "https://rbroderi.github.io/naay"
 
 [dependencies]
 thiserror = "1"

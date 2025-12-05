@@ -2,6 +2,11 @@
 name = "naay-py"
 version = "0.2.0"
 edition = "2021"
+description = "Rust native extension exposed via PyO3 for the naay YAML subset"
+license = "MIT"
+repository = "https://github.com/rbroderi/naay"
+homepage = "https://github.com/rbroderi/naay"
+documentation = "https://rbroderi.github.io/naay"
 
 [lib]
 name = "_naay_native"
