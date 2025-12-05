@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 # mypy: disable-error-code="import"
-import io
 import pathlib
 from typing import Any
 
@@ -18,7 +17,7 @@ from _naay_pure import parser as pure_parser
 native_module: Any | None
 
 try:  # pragma: no cover - executed in native-enabled environments
-    import _naay_native as native_module  # type: ignore[attr-defined]
+    import _naay_native as native_module  # type: ignore[attr-defined,no-redef]
 except ImportError:  # pragma: no cover - allows testing pure fallback in CI
     native_module = None
 
@@ -30,33 +29,26 @@ def _fixture_text(name: str) -> str:
 
 def _ruamel_load(text: str) -> Any:
     loader = ruamel.yaml.YAML(typ="safe")
-    return loader.load(text)
-
-
-def _ruamel_dump(data: Any) -> str:
-    dumper = ruamel.yaml.YAML(typ="safe")
-    buffer = io.StringIO()
-    dumper.dump(data, buffer)
-    return buffer.getvalue()
+    return loader.load(text)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
 
 def _to_plain(value: Any) -> Any:
     if isinstance(value, CommentedMap):
-        return {k: _to_plain(v) for k, v in value.items()}
+        return {k: _to_plain(v) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
     if isinstance(value, CommentedSeq):
-        return [_to_plain(v) for v in value]
+        return [_to_plain(v) for v in value]  # type: ignore[var-annotated]
     if isinstance(value, dict):
-        return {k: _to_plain(v) for k, v in value.items()}
+        return {k: _to_plain(v) for k, v in value.items()}  # type: ignore[misc]
     if isinstance(value, list):
-        return [_to_plain(v) for v in value]
+        return [_to_plain(v) for v in value]  # type: ignore[var-annotated]
     return value
 
 
 def _stringify_scalars(value: Any) -> Any:
     if isinstance(value, dict):
-        return {k: _stringify_scalars(v) for k, v in value.items()}
+        return {str(k): _stringify_scalars(v) for k, v in value.items()}  # type: ignore[arg-type]
     if isinstance(value, list):
-        return [_stringify_scalars(v) for v in value]
+        return [_stringify_scalars(v) for v in value]  # type: ignore[var-annotated]
     if isinstance(value, str):
         return value.rstrip("\n")
     return str(value)

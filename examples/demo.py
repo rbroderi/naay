@@ -5,6 +5,7 @@ import pathlib
 import subprocess
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 from typing import TextIO
@@ -15,6 +16,7 @@ from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.comments import CommentedSeq
 
 import naay
+from _naay_pure import parser as naay_pure
 
 RUNS = 500
 TARGETS: tuple[dict[str, str | int | bool], ...] = (
@@ -27,33 +29,98 @@ TARGETS: tuple[dict[str, str | int | bool], ...] = (
 )
 
 
-def _naay_supported_for(path: pathlib.Path) -> bool:
-    """Check whether naay can load the file in a separate process."""
+@dataclass(frozen=True)
+class NaayVariant:
+    """
+    A variant of the naay YAML parser for benchmarking.
+
+    :param label: The display name for this variant.
+    :type label: str
+    :param loads: Function to parse YAML text into Python objects.
+    :type loads: Callable[[str], Any]
+    :param dumps: Function to serialize Python objects to YAML text.
+    :type dumps: Callable[[Any], str]
+    :param module_path: The Python module path for this variant.
+    :type module_path: str
+    """
+
+    label: str
+    loads: Callable[[str], Any]
+    dumps: Callable[[Any], str]
+    module_path: str
+
+
+@dataclass(slots=True)
+class NaayResult:
+    """
+    Result container for a naay variant benchmark run.
+
+    :param variant: The naay variant that was benchmarked.
+    :type variant: NaayVariant
+    :param data: The parsed YAML data, or None if parsing failed.
+    :type data: Any | None
+    :param dump_sample: A sample of the dumped YAML output, or None if dumping failed.
+    :type dump_sample: str | None
+    """
+
+    variant: NaayVariant
+    data: Any | None = None
+    dump_sample: str | None = None
+
+
+def _build_naay_variants() -> tuple[NaayVariant, ...]:
+    variants: list[NaayVariant] = []
+    if not naay.USING_PURE_PYTHON:
+        variants.append(
+            NaayVariant(
+                label="naay (native)",
+                loads=naay.loads,
+                dumps=naay.dumps,
+                module_path="naay",
+            ),
+        )
+    variants.append(
+        NaayVariant(
+            label="naay (pure-python)",
+            loads=naay_pure.loads,
+            dumps=naay_pure.dumps,
+            module_path="_naay_pure.parser",
+        ),
+    )
+    return tuple(variants)
+
+
+NAAY_VARIANTS: tuple[NaayVariant, ...] = _build_naay_variants()
+
+
+def _naay_supported_for(path: pathlib.Path, *, module_path: str, label: str) -> bool:
+    """Check whether a given naay implementation can load the file."""
     script = (
-        "import pathlib, naay, sys;"
+        "import importlib, pathlib, sys;"
         "text = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8');"
-        "naay.loads(text)"
+        "module = importlib.import_module(sys.argv[2]);"
+        "module.loads(text)"
     )
     try:
         completed = subprocess.run(
-            [sys.executable, "-c", script, str(path)],
+            [sys.executable, "-c", script, str(path), module_path],
             capture_output=True,
             text=True,
             check=False,
         )
     except OSError as exc:  # pragma: no cover - environment specific
-        print(f"Warning: could not probe naay for {path.name}: {exc}")
+        print(f"Warning: could not probe {label} for {path.name}: {exc}")
         return True
     if completed.returncode == 0:
         return True
     print(
-        f"Skipping naay benchmarks for {path.name}: pre-check exited "
-         f"with code {completed.returncode}",
+        f"Skipping {label} benchmarks for {path.name}: pre-check exited "
+        f"with code {completed.returncode}",
     )
     if completed.stdout.strip():
-        print("naay probe stdout:", completed.stdout.strip())
+        print(f"{label} probe stdout:", completed.stdout.strip())
     if completed.stderr.strip():
-        print("naay probe stderr:", completed.stderr.strip())
+        print(f"{label} probe stderr:", completed.stderr.strip())
     return False
 
 
@@ -64,7 +131,11 @@ def _read_yaml_text(path: pathlib.Path) -> str:
 
 
 def _time_repeated_loads(
-    label: str, loader: Callable[[str], Any], *, path: pathlib.Path, runs: int,
+    label: str,
+    loader: Callable[[str], Any],
+    *,
+    path: pathlib.Path,
+    runs: int,
 ) -> tuple[Any | None, float]:
     """Run loader(text) ``runs`` times, reopening the file for every iteration."""
     total = 0.0
@@ -84,7 +155,10 @@ def _time_repeated_loads(
 
 
 def _time_repeated_dumps(
-    label: str, dumper: Callable[[Any, TextIO], None], data: Any, runs: int,
+    label: str,
+    dumper: Callable[[Any, TextIO], None],
+    data: Any,
+    runs: int,
 ) -> tuple[str | None, float]:
     """Run dumper(data, stream) ``runs`` times, writing to os.devnull each time."""
     total = 0.0
@@ -107,8 +181,13 @@ def _time_repeated_dumps(
     return sample, avg
 
 
-def _naay_dump_to_stream(data: Any, stream: TextIO) -> None:
-    stream.write(naay.dumps(data))
+def _wrap_text_dumper(
+    dumps_func: Callable[[Any], str],
+) -> Callable[[Any, TextIO], None]:
+    def _writer(data: Any, stream: TextIO) -> None:
+        stream.write(dumps_func(data))
+
+    return _writer
 
 
 def _pyyaml_dump_to_stream(data: Any, stream: TextIO) -> None:
@@ -131,32 +210,50 @@ def _as_plain(value: Any) -> Any:
 def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> None:
     print(f"\n===== Benchmarking {yaml_path.name} =====")
     timings: list[tuple[str, float]] = []
-    naay_data = None
-    naay_dump = None
-    naay_enabled = True
-    if probe_naay and not _naay_supported_for(yaml_path):
-        naay_enabled = False
+    naay_results: list[NaayResult] = []
+    for variant in NAAY_VARIANTS:
+        if probe_naay and not _naay_supported_for(
+            yaml_path,
+            module_path=variant.module_path,
+            label=variant.label,
+        ):
+            naay_results.append(NaayResult(variant=variant))
+            continue
 
-    if naay_enabled:
-        print("=== naay.loads ===")
+        print(f"\n=== {variant.label} loads ===")
         naay_data, elapsed = _time_repeated_loads(
-            "naay.loads", naay.loads, path=yaml_path, runs=runs,
+            f"{variant.label} loads",
+            variant.loads,
+            path=yaml_path,
+            runs=runs,
         )
-        timings.append(("naay.loads", elapsed))
-        # pprint(naay_data)
+        timings.append((f"{variant.label} loads", elapsed))
+        result = NaayResult(variant=variant, data=naay_data)
 
-        print("\n=== naay.dumps round-trip ===")
-        naay_dump, elapsed = _time_repeated_dumps(
-            "naay.dumps", _naay_dump_to_stream, naay_data, runs,
+        if naay_data is None:
+            print(f"\n=== {variant.label} dumps round-trip ===")
+            print(f"{variant.label} dumps skipped: load failed")
+            timings.append((f"{variant.label} dumps", math.inf))
+            naay_results.append(result)
+            continue
+
+        print(f"\n=== {variant.label} dumps round-trip ===")
+        naay_dump, dump_elapsed = _time_repeated_dumps(
+            f"{variant.label} dumps",
+            _wrap_text_dumper(variant.dumps),
+            naay_data,
+            runs,
         )
-        timings.append(("naay.dumps", elapsed))
-        # pprint(naay_dump)
-    else:
-        print("naay benchmarks skipped for this file")
+        result.dump_sample = naay_dump
+        timings.append((f"{variant.label} dumps", dump_elapsed))
+        naay_results.append(result)
 
     print("\n=== PyYAML safe_load ===")
     pyyaml_data, elapsed = _time_repeated_loads(
-        "PyYAML safe_load", pyyaml.safe_load, path=yaml_path, runs=runs,
+        "PyYAML safe_load",
+        pyyaml.safe_load,
+        path=yaml_path,
+        runs=runs,
     )
     timings.append(("PyYAML safe_load", elapsed))
     # pprint(pyyaml_data)
@@ -164,7 +261,10 @@ def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> Non
     print("\n=== PyYAML safe_dump ===")
     if pyyaml_data is not None:
         _pyyaml_dump, elapsed = _time_repeated_dumps(
-            "PyYAML safe_dump", _pyyaml_dump_to_stream, pyyaml_data, runs,
+            "PyYAML safe_dump",
+            _pyyaml_dump_to_stream,
+            pyyaml_data,
+            runs,
         )
     else:
         print("PyYAML safe_dump skipped: load failed")
@@ -212,21 +312,32 @@ def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> Non
         if None not in (ruamel_plain, pyyaml_plain)
         else "skipped",
     )
-    if naay_data is not None:
-        print("naay top-level keys:", sorted(naay_data.keys()))
+    if naay_results:
+        for result in naay_results:
+            label = result.variant.label
+            if isinstance(result.data, dict):
+                keys: list[Any] = sorted(result.data.keys())  # type: ignore[arg-type]
+                print(f"{label} top-level keys:", keys)
+            else:
+                print(f"{label} top-level keys: skipped")
+            if result.dump_sample is not None and result.data is not None:
+                try:
+                    data: Any = result.data
+                    stable = result.variant.loads(result.dump_sample) == data
+                except (
+                    Exception  # noqa: BLE001
+                ) as exc:  # pragma: no cover - defensive guard
+                    print(f"{label} round-trip stable: error ({exc})")
+                else:
+                    print(f"{label} round-trip stable: {stable}")
+            else:
+                print(f"{label} round-trip stable: skipped")
     else:
-        print("naay top-level keys: skipped")
-    if naay_dump is not None and naay_data is not None:
-        print("naay round-trip stable:", naay.loads(naay_dump) == naay_data)
-    else:
-        print("naay round-trip stable: skipped")
+        print("naay benchmarks skipped for this file")
     print(f"\n=== Timing summary for {yaml_path.name} (ms) ===")
     for label, elapsed in timings:
         suffix = f" (avg over {runs})"
-        if math.isinf(elapsed):
-            display = "infinity"
-        else:
-            display = f"{elapsed * 1000:.2f}"
+        display = "infinity" if math.isinf(elapsed) else f"{elapsed * 1000:.2f}"
         print(f"{label:>20}: {display}{suffix}")
 
 

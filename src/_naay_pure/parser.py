@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 from typing import Final
+from typing import Literal
 
 from naay import REQUIRED_VERSION
 
@@ -15,7 +17,6 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - optional dependency
     pass
 
-# ruff: noqa: PLR0911
 YamlValue = str | list["YamlValue"] | dict[str, "YamlValue"]
 
 
@@ -32,6 +33,33 @@ class Line:
     indent: int
     content: str
     line_no: int
+
+
+@dataclass(slots=True)
+class _ParentRef:
+    sequence: list[YamlValue] | None = None
+    index: int | None = None
+    mapping: dict[str, YamlValue] | None = None
+    key: str | None = None
+
+    def replace(self, value: YamlValue) -> None:
+        if self.sequence is not None and self.index is not None:
+            self.sequence[self.index] = value
+            return
+        if self.mapping is not None and self.key is not None:
+            self.mapping[self.key] = value
+            return
+        msg = "invalid parent reference for replacement"
+        raise NaayParseError(msg)
+
+
+@dataclass(slots=True)
+class _Context:
+    kind: Literal["map", "seq"]
+    indent: int
+    container: list[YamlValue] | dict[str, YamlValue]
+    anchor_name: str | None = None
+    parent: _ParentRef | None = None
 
 
 def loads(text: str, /) -> YamlValue:
@@ -55,173 +83,397 @@ class _Parser:
         self.lines: list[Line] = self._preprocess(text)
         self.index = 0
         self.anchors: dict[str, YamlValue] = {}
+        self._root_replacement: YamlValue | None = None
 
     # Public -----------------------------------------------------------------
-    def parse(self) -> YamlValue:
+    def parse(self) -> YamlValue:  # noqa: C901
         if not self.lines:
             msg = "missing required _naay_version at root (Semantic Date Versioning)"
-            raise NaayParseError(
-                msg,
-            )
-        # Decide whether root is a map or sequence based on the first non-comment line
+            raise NaayParseError(msg)
         first_idx = self._skip_comments(self.index)
         if first_idx >= len(self.lines):
             msg = "missing required _naay_version at root (Semantic Date Versioning)"
-            raise NaayParseError(
-                msg,
-            )
+            raise NaayParseError(msg)
         self.index = first_idx
         first_line = self.lines[self.index]
         base_indent = first_line.indent
-        value: YamlValue
         if self._looks_like_seq(first_line):
-            value = self._parse_seq(base_indent)
+            root: list[YamlValue] | dict[str, YamlValue] = []
+            stack: list[_Context] = [
+                _Context(kind="seq", indent=base_indent, container=root),
+            ]
         else:
-            value = self._parse_map(base_indent)
-        self._enforce_root_version(value, first_line.line_no)
-        return value
-
-    # High-level parse helpers ------------------------------------------------
-    def _parse_seq(self, base_indent: int) -> list[YamlValue]:
-        items: list[YamlValue] = []
-        while self.index < len(self.lines):
+            root = {}
+            stack = [
+                _Context(kind="map", indent=base_indent, container=root),
+            ]
+        self._root_replacement = None
+        while stack:
+            context = stack[-1]
+            if self.index >= len(self.lines):
+                self._finalize_context(stack)
+                continue
             line = self.lines[self.index]
-            if line.indent < base_indent:
-                break
-            if line.indent > base_indent:
-                break
             if line.content.startswith("#"):
                 self.index += 1
                 continue
-            if not self._looks_like_seq(line):
-                break
-            body, _ = _split_inline_comment(line.content)
-            after_dash = body[1:].lstrip()
-            self.index += 1
-            items.append(self._parse_seq_value(after_dash, base_indent, line))
-        return items
+            if line.indent < context.indent:
+                self._finalize_context(stack)
+                continue
+            if line.indent > context.indent:
+                msg = f"unexpected indentation (line {line.line_no})"
+                raise NaayParseError(msg)
+            if context.kind == "seq":
+                if not self._process_seq_line(context, stack):
+                    continue
+            elif not self._process_map_line(context, stack):
+                continue
+        result: YamlValue = (
+            self._root_replacement if self._root_replacement is not None else root
+        )
+        self._enforce_root_version(result, first_line.line_no)
+        return result
 
-    def _parse_map(self, base_indent: int) -> dict[str, YamlValue]:
-        mapping: dict[str, YamlValue] = {}
-        while self.index < len(self.lines):
+    # Iterative helpers -------------------------------------------------------
+    def _finalize_context(self, stack: list[_Context]) -> None:
+        finished = stack.pop()
+        if finished.anchor_name:
+            cloned = _clone_value(finished.container)
+            self.anchors[finished.anchor_name] = cloned
+            replacement = _clone_value(finished.container)
+            if finished.parent is not None:
+                finished.parent.replace(replacement)
+            else:
+                self._root_replacement = replacement
+
+    def _consume_until_depth(self, stack: list[_Context], target_depth: int) -> None:
+        while len(stack) > target_depth:
+            context = stack[-1]
+            if self.index >= len(self.lines):
+                self._finalize_context(stack)
+                continue
             line = self.lines[self.index]
-            if line.indent < base_indent:
-                break
-            if line.content.startswith("- ") and line.indent == base_indent:
-                break
             if line.content.startswith("#"):
                 self.index += 1
                 continue
-            if line.indent > base_indent:
-                break
-
-            stripped, _ = _split_inline_comment(line.content)
-            colon_pos = stripped.find(":")
-            if colon_pos == -1:
-                msg = f"expected ':' in mapping entry (line {line.line_no})"
-                raise NaayParseError(
-                    msg,
-                )
-            key_raw = stripped[:colon_pos].strip()
-            value_raw = stripped[colon_pos + 1 :].lstrip()
-            key = _parse_key(key_raw)
-            self.index += 1
-
-            if key == "<<" and value_raw.startswith("*"):
-                merged = self._resolve_alias(value_raw[1:].strip(), line)
-                self._merge_into(mapping, merged, line)
+            if line.indent < context.indent:
+                self._finalize_context(stack)
+                continue
+            if line.indent > context.indent:
+                msg = f"unexpected indentation (line {line.line_no})"
+                raise NaayParseError(msg)
+            if context.kind == "seq":
+                if not self._process_seq_line(context, stack):
+                    continue
+            elif not self._process_map_line(context, stack):
                 continue
 
-            mapping[key] = self._parse_map_value(value_raw, base_indent, line)
-        return mapping
+    def _process_seq_line(self, context: _Context, stack: list[_Context]) -> bool:
+        line = self.lines[self.index]
+        if not self._looks_like_seq(line):
+            self._finalize_context(stack)
+            return False
+        body, _ = _split_inline_comment(line.content)
+        after_dash = body[1:].lstrip()
+        self.index += 1
+        self._assign_seq_value(context, stack, line, after_dash)
+        return True
 
-    # Value handlers ----------------------------------------------------------
-    def _parse_seq_value(
+    def _process_map_line(self, context: _Context, stack: list[_Context]) -> bool:
+        line = self.lines[self.index]
+        if line.content.startswith("- ") and line.indent == context.indent:
+            self._finalize_context(stack)
+            return False
+        stripped, _ = _split_inline_comment(line.content)
+        colon_pos = stripped.find(":")
+        if colon_pos == -1:
+            msg = f"expected ':' in mapping entry (line {line.line_no})"
+            raise NaayParseError(msg)
+        key_raw = stripped[:colon_pos].strip()
+        value_raw = stripped[colon_pos + 1 :].lstrip()
+        key = _parse_key(key_raw)
+        self.index += 1
+        if not isinstance(context.container, dict):
+            msg = f"expected mapping context (line {line.line_no})"
+            raise NaayParseError(msg)
+        mapping = context.container
+        if key == "<<" and value_raw.startswith("*"):
+            merged = self._resolve_alias(value_raw[1:].strip(), line)
+            self._merge_into(mapping, merged, line)
+            return True
+        self._assign_map_value(context, stack, line, key, value_raw)
+        return True
+
+    def _assign_seq_value(
         self,
-        after_dash: str,
+        context: _Context,
+        stack: list[_Context],
+        line: Line,
+        token: str,
+    ) -> None:
+        items: list[YamlValue] = context.container  # type: ignore[assignment]
+        if not token:
+            if not self._start_sequence_child(context, stack, line, required=False):
+                items.append("")
+            return
+        if token == "|":  # noqa: S105
+            items.append(self._parse_block_scalar(context.indent + 1))
+            return
+        if token.startswith("&"):
+            anchor_name = token[1:].strip()
+            if not anchor_name:
+                msg = f"invalid anchor name (line {line.line_no})"
+                raise NaayParseError(msg)
+            self._start_sequence_child(
+                context,
+                stack,
+                line,
+                required=True,
+                anchor_name=anchor_name,
+            )
+            return
+        if token.startswith("*"):
+            items.append(_clone_value(self._resolve_alias(token[1:].strip(), line)))
+            return
+        literal = _empty_literal(token)
+        if literal is not None:
+            items.append(literal)
+            return
+        if ":" in token:
+            inline_map = self._parse_inline_map(token, context.indent, line, stack)
+            items.append(inline_map)
+            return
+        items.append(_strip_quotes(token))
+
+    def _assign_map_value(
+        self,
+        context: _Context,
+        stack: list[_Context],
+        line: Line,
+        key: str,
+        value_raw: str,
+    ) -> None:
+        if not isinstance(context.container, dict):
+            msg = f"expected mapping context (line {line.line_no})"
+            raise NaayParseError(msg)
+        mapping: dict[str, YamlValue] = context.container
+        if not value_raw:
+            if not self._start_map_child(context, stack, line, key, required=False):
+                mapping[key] = ""
+            return
+        if value_raw == "|":
+            mapping[key] = self._parse_block_scalar(context.indent + 1)
+            return
+        if value_raw.startswith("&"):
+            anchor_name = value_raw[1:].strip()
+            if not anchor_name:
+                msg = f"invalid anchor name (line {line.line_no})"
+                raise NaayParseError(msg)
+            self._start_map_child(
+                context,
+                stack,
+                line,
+                key,
+                required=True,
+                anchor_name=anchor_name,
+            )
+            return
+        if value_raw.startswith("*"):
+            mapping[key] = _clone_value(
+                self._resolve_alias(value_raw[1:].strip(), line),
+            )
+            return
+        literal = _empty_literal(value_raw)
+        if literal is not None:
+            mapping[key] = literal
+            return
+        mapping[key] = _strip_quotes(value_raw)
+
+    def _start_sequence_child(
+        self,
+        context: _Context,
+        stack: list[_Context],
+        line: Line,
+        *,
+        required: bool,
+        anchor_name: str | None = None,
+    ) -> bool:
+        parent_list = context.container  # type: ignore[assignment]
+        return self._start_child_context(
+            parent_container=parent_list,
+            is_list=True,
+            base_indent=context.indent,
+            line=line,
+            stack=stack,
+            required=required,
+            anchor_name=anchor_name,
+        )
+
+    def _start_map_child(  # noqa: PLR0913
+        self,
+        context: _Context,
+        stack: list[_Context],
+        line: Line,
+        key: str,
+        *,
+        required: bool,
+        anchor_name: str | None = None,
+    ) -> bool:
+        parent_map = context.container  # type: ignore[assignment]
+        return self._start_child_context(
+            parent_container=parent_map,
+            is_list=False,
+            base_indent=context.indent,
+            line=line,
+            stack=stack,
+            required=required,
+            anchor_name=anchor_name,
+            key=key,
+        )
+
+    def _start_child_context(  # noqa: PLR0913
+        self,
+        *,
+        parent_container: list[YamlValue] | dict[str, YamlValue],
+        is_list: bool,
         base_indent: int,
         line: Line,
-    ) -> YamlValue:
-        if not after_dash:
-            if (
-                self.index >= len(self.lines)
-                or self.lines[self.index].indent <= base_indent
-            ):
-                return ""
-            child_indent = self.lines[self.index].indent
-            return self._parse_block(child_indent)
-        if after_dash == "|":
-            return self._parse_block_scalar(base_indent + 1)
-        if after_dash.startswith("&"):
-            anchor_name = after_dash[1:].strip()
-            child = self._parse_block_required(base_indent, line)
-            cloned = _clone_value(child)
-            self.anchors[anchor_name] = cloned
-            return _clone_value(child)
-        if after_dash.startswith("*"):
-            return _clone_value(self._resolve_alias(after_dash[1:].strip(), line))
-        literal = _empty_literal(after_dash)
-        if literal is not None:
-            return literal
-        if ":" in after_dash:
-            return self._parse_inline_map(after_dash, base_indent, line)
-        return _strip_quotes(after_dash)
+        stack: list[_Context],
+        required: bool,
+        anchor_name: str | None,
+        key: str | None = None,
+    ) -> bool:
+        next_idx = self._skip_comments(self.index)
+        if next_idx >= len(self.lines) or self.lines[next_idx].indent <= base_indent:
+            if required:
+                msg = f"anchor without nested value (line {line.line_no})"
+                raise NaayParseError(msg)
+            return False
+        child_line = self.lines[next_idx]
+        child_kind: Literal["map", "seq"] = (
+            "seq" if self._looks_like_seq(child_line) else "map"
+        )
+        container: list[YamlValue] | dict[str, YamlValue]
+        parent_ref: _ParentRef | None = None
+        container = [] if child_kind == "seq" else {}
+        if is_list:
+            if not isinstance(parent_container, list):
+                msg = "expected list container"
+                raise NaayParseError(msg)
+            parent_container.append(container)
+            if anchor_name:
+                parent_ref = _ParentRef(
+                    sequence=parent_container,
+                    index=len(parent_container) - 1,
+                )
+        else:
+            if key is None:
+                msg = "missing mapping key for nested context"
+                raise NaayParseError(msg)
+            if not isinstance(parent_container, dict):
+                msg = "expected dict container"
+                raise NaayParseError(msg)
+            parent_container[key] = container
+            if anchor_name:
+                parent_ref = _ParentRef(mapping=parent_container, key=key)
+        stack.append(
+            _Context(
+                kind=child_kind,
+                indent=child_line.indent,
+                container=container,
+                anchor_name=anchor_name,
+                parent=parent_ref,
+            ),
+        )
+        self.index = next_idx
+        return True
 
-    def _parse_map_value(self, vpart: str, base_indent: int, line: Line) -> YamlValue:
-        if not vpart:
-            if (
-                self.index >= len(self.lines)
-                or self.lines[self.index].indent <= base_indent
-            ):
-                return ""
-            child_indent = self.lines[self.index].indent
-            return self._parse_block(child_indent)
-        if vpart == "|":
-            return self._parse_block_scalar(base_indent + 1)
-        if vpart.startswith("&"):
-            anchor_name = vpart[1:].strip()
-            child = self._parse_block_required(base_indent, line)
-            cloned = _clone_value(child)
-            self.anchors[anchor_name] = cloned
-            return _clone_value(child)
-        if vpart.startswith("*"):
-            return _clone_value(self._resolve_alias(vpart[1:].strip(), line))
-        literal = _empty_literal(vpart)
-        if literal is not None:
-            return literal
-        return _strip_quotes(vpart)
+    def _start_inline_child_context(  # noqa: PLR0913
+        self,
+        mapping: dict[str, YamlValue],
+        key: str,
+        expected_indent: int,
+        line: Line,
+        stack: list[_Context],
+        *,
+        anchor_name: str | None = None,
+    ) -> None:
+        next_idx = self._skip_comments(self.index)
+        if (
+            next_idx >= len(self.lines)
+            or self.lines[next_idx].indent <= expected_indent - 1
+        ):
+            msg = f"anchor without nested value (line {line.line_no})"
+            raise NaayParseError(msg)
+        child_line = self.lines[next_idx]
+        child_kind: Literal["map", "seq"] = (
+            "seq" if self._looks_like_seq(child_line) else "map"
+        )
+        container: list[YamlValue] | dict[str, YamlValue]
+        container = [] if child_kind == "seq" else {}
+        mapping[key] = container
+        parent_ref = _ParentRef(mapping=mapping, key=key) if anchor_name else None
+        stack.append(
+            _Context(
+                kind=child_kind,
+                indent=child_line.indent,
+                container=container,
+                anchor_name=anchor_name,
+                parent=parent_ref,
+            ),
+        )
+        self.index = next_idx
 
     def _parse_inline_map(
         self,
         payload: str,
         base_indent: int,
         line: Line,
+        stack: list[_Context],
     ) -> dict[str, YamlValue]:
         colon_pos = payload.find(":")
         if colon_pos == -1:
             msg = f"expected ':' inside inline map (line {line.line_no})"
-            raise NaayParseError(
-                msg,
-            )
+            raise NaayParseError(msg)
         key = _parse_key(payload[:colon_pos].strip())
         remainder = payload[colon_pos + 1 :].lstrip()
-        value = self._parse_inline_value(remainder, line, base_indent + 2)
         mapping: dict[str, YamlValue] = {}
+        value = self._parse_inline_value(
+            remainder,
+            line,
+            base_indent + 2,
+            stack,
+            mapping,
+            key,
+        )
         if key == "<<":
             self._merge_into(mapping, value, line)
+            mapping.pop("<<", None)
         else:
             mapping[key] = value
-        if self.index < len(self.lines) and self.lines[self.index].indent > base_indent:
-            child_indent = self.lines[self.index].indent
-            extra = self._parse_map(child_indent)
-            mapping.update(extra)
+        next_idx = self._skip_comments(self.index)
+        if next_idx < len(self.lines) and self.lines[next_idx].indent > base_indent:
+            child_indent = self.lines[next_idx].indent
+            before_len = len(stack)
+            stack.append(
+                _Context(
+                    kind="map",
+                    indent=child_indent,
+                    container=mapping,
+                ),
+            )
+            self.index = next_idx
+            self._consume_until_depth(stack, before_len)
         return mapping
 
-    def _parse_inline_value(
+    def _parse_inline_value(  # noqa: PLR0913
         self,
         vpart: str,
         line: Line,
         expected_indent: int,
+        stack: list[_Context],
+        mapping: dict[str, YamlValue],
+        key: str,
     ) -> YamlValue:
         min_quote_len: Final = 2
         if (
@@ -238,17 +490,20 @@ class _Parser:
             return self._parse_block_scalar(expected_indent)
         if vpart.startswith("&"):
             anchor_name = vpart[1:].strip()
-            if (
-                self.index >= len(self.lines)
-                or self.lines[self.index].indent <= expected_indent - 1
-            ):
-                msg = f"anchor without nested value (line {line.line_no})"
+            if not anchor_name:
+                msg = f"invalid anchor name (line {line.line_no})"
                 raise NaayParseError(msg)
-            child_indent = self.lines[self.index].indent
-            child = self._parse_block(child_indent)
-            cloned = _clone_value(child)
-            self.anchors[anchor_name] = cloned
-            return _clone_value(child)
+            before_len = len(stack)
+            self._start_inline_child_context(
+                mapping,
+                key,
+                expected_indent,
+                line,
+                stack,
+                anchor_name=anchor_name,
+            )
+            self._consume_until_depth(stack, before_len)
+            return mapping[key]
         if vpart.startswith("*"):
             return _clone_value(self._resolve_alias(vpart[1:].strip(), line))
         literal = _empty_literal(vpart)
@@ -275,27 +530,6 @@ class _Parser:
             raise NaayParseError(msg)
         for mk, mv in value.items():
             target.setdefault(mk, _clone_value(mv))
-
-    def _parse_block(self, base_indent: int) -> YamlValue:
-        self.index = self._skip_comments(self.index)
-        if self.index >= len(self.lines):
-            return ""
-        line = self.lines[self.index]
-        if line.indent < base_indent:
-            return ""
-        if self._looks_like_seq(line):
-            return self._parse_seq(base_indent)
-        return self._parse_map(base_indent)
-
-    def _parse_block_required(self, base_indent: int, line: Line) -> YamlValue:
-        if (
-            self.index >= len(self.lines)
-            or self.lines[self.index].indent <= base_indent
-        ):
-            msg = f"anchor without nested value (line {line.line_no})"
-            raise NaayParseError(msg)
-        child_indent = self.lines[self.index].indent
-        return self._parse_block(child_indent)
 
     def _parse_block_scalar(self, min_indent: int) -> str:
         result: list[tuple[str, int]] = []
@@ -366,25 +600,109 @@ class _Parser:
 class _Dumper:
     def __init__(self) -> None:
         self._parts: list[str] = []
+        self._tasks: list[tuple[str, tuple[Any, ...]]] = []
 
     def write_value(self, value: YamlValue, indent: int) -> None:
-        if isinstance(value, list):
-            if not value:
-                self._parts.append(" " * indent + "[]\n")
-                return
-            self._write_seq(value, indent)
-        elif isinstance(value, dict):
-            if not value:
-                self._parts.append(" " * indent + "{}\n")
-                return
-            self._write_map(value, indent)
-        else:
-            self._write_scalar(value, indent)
+        self._tasks.append(("value", (indent, value)))
+        while self._tasks:
+            task, payload = self._tasks.pop()
+            if task == "value":
+                self._process_value(*payload)
+            elif task == "seq":
+                self._process_seq(*payload)
+            elif task == "map":
+                self._process_map(*payload)
+            else:  # pragma: no cover - defensive
+                msg = f"unknown dump task: {task}"
+                raise NaayDumpError(msg)
 
     def render(self) -> str:
         return "".join(self._parts)
 
     # Writers ----------------------------------------------------------------
+    def _process_value(self, indent: int, value: YamlValue) -> None:
+        if isinstance(value, str):
+            self._write_scalar(value, indent)
+            return
+        if isinstance(value, list):
+            if not value:
+                self._parts.append(" " * indent + "[]\n")
+                return
+            self._tasks.append(("seq", (indent, value, 0)))
+            return
+        if not value:
+            self._parts.append(" " * indent + "{}\n")
+            return
+        items = list(value.items())
+        self._tasks.append(("map", (indent, items, 0)))
+
+    def _process_seq(
+        self,
+        indent: int,
+        seq: Sequence[YamlValue],
+        index: int,
+    ) -> None:
+        if index >= len(seq):
+            return
+        item = seq[index]
+        prefix = " " * indent + "- "
+        self._parts.append(prefix)
+        if isinstance(item, str):
+            self._write_scalar(item, indent)
+            self._tasks.append(("seq", (indent, seq, index + 1)))
+            return
+        if isinstance(item, list):
+            if not item:
+                self._parts.append("[]\n")
+                self._tasks.append(("seq", (indent, seq, index + 1)))
+                return
+            self._parts.append("\n")
+            self._tasks.append(("seq", (indent, seq, index + 1)))
+            self._tasks.append(("seq", (indent + 2, item, 0)))
+            return
+        if not item:
+            self._parts.append("{}\n")
+            self._tasks.append(("seq", (indent, seq, index + 1)))
+            return
+        self._parts.append("\n")
+        items = list(item.items())
+        self._tasks.append(("seq", (indent, seq, index + 1)))
+        self._tasks.append(("map", (indent + 2, items, 0)))
+
+    def _process_map(
+        self,
+        indent: int,
+        items: Sequence[tuple[str, YamlValue]],
+        index: int,
+    ) -> None:
+        if index >= len(items):
+            return
+        key, value = items[index]
+        formatted_key = self._format_key(key)
+        prefix = " " * indent + formatted_key + ":"
+        if isinstance(value, str):
+            self._parts.append(prefix + " ")
+            self._write_scalar(value, indent)
+            self._tasks.append(("map", (indent, items, index + 1)))
+            return
+        if isinstance(value, list):
+            if not value:
+                self._parts.append(prefix + " []\n")
+                self._tasks.append(("map", (indent, items, index + 1)))
+                return
+            self._parts.append(prefix + "\n")
+            self._tasks.append(("map", (indent, items, index + 1)))
+            self._tasks.append(("seq", (indent + 2, value, 0)))
+            return
+        if not value:
+            self._parts.append(prefix + " {}\n")
+            self._tasks.append(("map", (indent, items, index + 1)))
+            return
+        self._parts.append(prefix + "\n")
+        nested_items = list(value.items())
+        self._tasks.append(("map", (indent, items, index + 1)))
+        self._tasks.append(("map", (indent + 2, nested_items, 0)))
+
     def _write_scalar(self, value: str, indent: int) -> None:
         if "\n" in value:
             self._parts.append("|")
@@ -394,45 +712,6 @@ class _Dumper:
             return
         escaped = value.replace("\\", "\\\\").replace('"', '\\"')
         self._parts.append(f'"{escaped}"\n')
-
-    def _write_seq(self, seq: Sequence[YamlValue], indent: int) -> None:
-        for item in seq:
-            prefix = " " * indent + "- "
-            self._parts.append(prefix)
-            if isinstance(item, str):
-                self._write_scalar(item, indent)
-            elif isinstance(item, list):
-                if not item:
-                    self._parts.append("[]\n")
-                    continue
-                self._parts.append("\n")
-                self._write_seq(item, indent + 2)
-            else:
-                if not item:
-                    self._parts.append("{}\n")
-                    continue
-                self._parts.append("\n")
-                self._write_map(item, indent + 2)
-
-    def _write_map(self, mapping: dict[str, YamlValue], indent: int) -> None:
-        for key, value in mapping.items():
-            formatted_key = self._format_key(key)
-            prefix = " " * indent + formatted_key + ":"
-            if isinstance(value, str):
-                self._parts.append(prefix + " ")
-                self._write_scalar(value, indent)
-            elif isinstance(value, list):
-                if not value:
-                    self._parts.append(prefix + " []\n")
-                    continue
-                self._parts.append(prefix + "\n")
-                self._write_seq(value, indent + 2)
-            else:
-                if not value:
-                    self._parts.append(prefix + " {}\n")
-                    continue
-                self._parts.append(prefix + "\n")
-                self._write_map(value, indent + 2)
 
     @staticmethod
     def _format_key(key: str) -> str:
@@ -492,8 +771,8 @@ def _clone_value(value: YamlValue) -> YamlValue:
 
 
 def _empty_literal(token: str) -> YamlValue | None:
-    if token == "[]":
+    if token == "[]":  # noqa: S105
         return []
-    if token == "{}":
+    if token == "{}":  # noqa: S105
         return {}
     return None

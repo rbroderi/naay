@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import textwrap
+from typing import Any
 
 import naay
 
@@ -19,10 +20,9 @@ def test_empty_lists_and_maps_round_trip() -> None:
           nested_map: {}
         """,
     ).lstrip()
-
     parsed = naay.loads(yaml_text)
 
-    expected = {
+    expected: dict[str, Any] = {
         "_naay_version": "1.0",
         "empty_list": [],
         "empty_map": {},

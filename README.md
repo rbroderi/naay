@@ -65,74 +65,47 @@ clock time per operation.
 
 ### `examples/stress_test0.yaml` (500 runs)
 
-| Engine            | Load avg (ms) | Dump avg (ms) | Relative to `naay` |
-|-------------------|---------------|---------------|--------------------|
-| `naay`            | **0.11**      | **0.05**      | baseline           |
-| PyYAML `safe_*`   | 10.22         | 6.09          | ~93× slower loads, ~121× slower dumps |
-| `ruamel.yaml`(safe) | 1.95       | 2.73          | ~18× slower loads, ~55× slower dumps |
+| Engine              | Load avg (ms) | Dump avg (ms) | Relative to `naay (native)` |
+|---------------------|---------------|---------------|-----------------------------|
+| `naay (native)`     | **0.13**      | **0.06**      | baseline                    |
+| `naay (pure-python)`| 0.96          | 0.45          | ~7× slower loads, ~8× slower dumps (still >10× faster than PyYAML loads) |
+| PyYAML `safe_*`     | 10.64         | 7.91          | ~82× slower loads, ~132× slower dumps |
+| `ruamel.yaml` (safe)| 3.02          | 4.18          | ~23× slower loads, ~70× slower dumps |
 
 ### `examples/stress_test1.yaml` (20 runs, deeply nested)
 
-| Engine            | Load avg (ms) | Dump avg (ms) | Notes |
-|-------------------|---------------|---------------|-------|
-| `naay`            | **3.21**      | **4.07**      | baseline |
-| PyYAML `safe_*`   | fail          | fail          | hit Python recursion depth on the first iteration |
-| `ruamel.yaml`(safe) | 19.14       | fail          | ~6× slower on load; dump also exceeded recursion depth |
+| Engine              | Load avg (ms) | Dump avg (ms) | Notes |
+|---------------------|---------------|---------------|-------|
+| `naay (native)`     | **4.91**      | **5.89**      | baseline |
+| `naay (pure-python)`| 9.82          | 7.78          | ~2× slower than native; still stack-safe |
+| PyYAML `safe_*`     | fail          | fail          | hit Python recursion depth on the first iteration |
+| `ruamel.yaml` (safe)| 33.80         | fail          | ~7× slower on load; dump also exceeded recursion depth |
+
+The pure-Python rows above use `_naay_pure.parser`, the fallback shipped alongside the wheel
+for platforms where compiling the Rust extension is not possible.
 
 ### Synthetic dense map (1,500 flat scalars, 200 runs)
 
-| Engine            | Load avg (ms) | Dump avg (ms) |
-|-------------------|---------------|---------------|
-| `naay`            | **1.87**      | **0.65**      |
-| PyYAML `safe_*`   | 70.15         | 34.66         |
-| `ruamel.yaml`(safe) | 19.27       | 29.97         |
+| Engine              | Load avg (ms) | Dump avg (ms) |
+|---------------------|---------------|---------------|
+| `naay (native)`     | **0.88**      | **0.68**      |
+| `naay (pure-python)`| 6.01          | 3.23          |
+| PyYAML `safe_*`     | 82.41         | 45.77         |
+| `ruamel.yaml` (safe)| 19.96         | 40.09         |
 
-Even on this uniform synthetic workload, `naay` loads about **38× faster than
-PyYAML** and **10× faster than ruamel**, while dumping is **50× faster** than both.
+Even on this uniform synthetic workload, `naay (native)` loads about **93× faster than
+PyYAML** and **23× faster than ruamel**, while dumping is **68× faster** than PyYAML and
+**59× faster** than ruamel. The pure-Python fallback still loads ~13× faster than PyYAML and
+dumps ~14× faster, so the all-Python wheel remains viable when the Rust extension is unavailable.
 
-The synthetic numbers come from the following snippet (run with `uv run python`):
+The synthetic numbers come from `examples/synthetic_dense_bench.py`. Reproduce them with:
 
-```python
-import io
-import time
-
-import naay
-import ruamel.yaml
-import yaml as pyyaml
-
-RUNS = 200
-KEYS = 1_500
-DOC = '_naay_version: "1.0"\n' + '\n'.join(f'key{i}: "{i}"' for i in range(KEYS))
-
-ruamel_loader = ruamel.yaml.YAML(typ="safe")
-ruamel_dumper = ruamel.yaml.YAML(typ="safe")
-
-def bench_load(fn):
-   start = time.perf_counter()
-   for _ in range(RUNS):
-      fn(DOC)
-   return (time.perf_counter() - start) / RUNS
-
-def bench_dump(fn):
-   start = time.perf_counter()
-   for _ in range(RUNS):
-      fn()
-   return (time.perf_counter() - start) / RUNS
-
-naay_data = naay.loads(DOC)
-pyyaml_data = pyyaml.safe_load(DOC)
-ruamel_data = ruamel_loader.load(DOC)
-
-print("naay.loads", bench_load(naay.loads))
-print("naay.dumps", bench_dump(lambda: naay.dumps(naay_data)))
-print("PyYAML safe_load", bench_load(pyyaml.safe_load))
-print("PyYAML safe_dump", bench_dump(lambda: pyyaml.safe_dump(pyyaml_data)))
-print("ruamel safe_load", bench_load(ruamel_loader.load))
-print(
-   "ruamel safe_dump",
-   bench_dump(lambda: ruamel_dumper.dump(ruamel_data, io.StringIO())),
-)
+```bash
+uv run python examples/synthetic_dense_bench.py --runs 200 --keys 1500
 ```
+
+The helper accepts `--runs` and `--keys` flags if you want to probe different shapes or
+shorter smoke tests.
 
 ## Spec
 
