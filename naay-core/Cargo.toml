@@ -9,5 +9,5 @@ homepage = "https://github.com/rbroderi/naay"
 documentation = "https://rbroderi.github.io/naay"
 
 [dependencies]
-thiserror = "1"
+thiserror = "2"
 tailcall = "1.0"
