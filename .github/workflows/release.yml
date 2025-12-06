@@ -28,6 +28,10 @@ on:
 env:
   PYTHON_VERSION: "3.13"
 
+permissions:
+  contents: write
+  id-token: write
+
 jobs:
   build-wheels:
     name: Build wheels (${{ matrix.label }})
@@ -44,7 +48,7 @@ jobs:
             label: linux-aarch64
             artifact: wheels-linux-arm
             build_sdist: false
-          - os: macos-13
+          - os: macos-15
             label: macos-x86_64
             artifact: wheels-macos
             build_sdist: false
@@ -106,6 +110,8 @@ jobs:
       - build-wheels
     if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.upload_release == 'true')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Ensure checkout for tagging
         if: github.event_name == 'workflow_dispatch'
