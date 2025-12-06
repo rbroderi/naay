@@ -81,6 +81,7 @@ jobs:
         with:
           release: "14.1"
           usesh: true
+          sync: sshfs
           prepare: |
             pkg install -y rust git pkgconf gmake wget libarchive libffi gettext bzip2 sqlite3 openssl
           run: |
