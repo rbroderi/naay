@@ -2,7 +2,7 @@
 
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/naay?logo=python&label=python)
 ![License](https://img.shields.io/badge/license-LGPL--2.1--or--later-blue)
-![Platforms](https://img.shields.io/badge/os-windows%20%7C%20linux%20%7C%20macOS%20%7C%20freebsd-brightgreen)
+![Platforms](https://img.shields.io/badge/os-windows%20%7C%20linux%20%7C%20macOS-brightgreen)
 ![GitHub release](https://img.shields.io/github/v/release/rbroderi/naay?label=release)
 
 ## Vote naay to complicated yaml syntax and parsers.
