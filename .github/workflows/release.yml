@@ -71,44 +71,10 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist
 
-  build-freebsd:
-    name: Build wheel (FreeBSD)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build inside FreeBSD VM
-        uses: vmactions/freebsd-vm@v1
-        with:
-          release: "14.1"
-          usesh: true
-          sync: sshfs
-          prepare: |
-            pkg install -y rust git pkgconf gmake wget libarchive libffi gettext bzip2 sqlite3 openssl
-          run: |
-            # Build CPython 3.13 from source because FreeBSD packages lag behind.
-            cd /github/workspace
-            fetch https://www.python.org/ftp/python/3.13.0/Python-3.13.0.tgz -o /tmp/Python-3.13.0.tgz
-            cd /tmp
-            tar -xzf Python-3.13.0.tgz
-            cd Python-3.13.0
-            ./configure --prefix=/opt/python3.13 --enable-optimizations --with-ensurepip=install
-            gmake -j"$(sysctl -n hw.ncpu)"
-            gmake install
-            /opt/python3.13/bin/python3.13 -m pip install --upgrade pip maturin
-            cd /github/workspace
-            mkdir -p dist
-            /opt/python3.13/bin/python3.13 -m maturin build --release --out dist --interpreter /opt/python3.13/bin/python3.13
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-freebsd
-          path: dist
-
   publish-pypi:
     name: Publish to PyPI
     needs:
       - build-wheels
-      - build-freebsd
     if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')
     runs-on: ubuntu-latest
     steps:
@@ -127,7 +93,6 @@ jobs:
     name: Upload release assets
     needs:
       - build-wheels
-      - build-freebsd
     if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.upload_release == 'true')
     runs-on: ubuntu-latest
     steps:
