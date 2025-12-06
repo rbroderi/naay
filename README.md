@@ -113,7 +113,7 @@ uv run python examples/synthetic_dense_bench.py --runs 200 --keys 1500
 The helper accepts `--runs` and `--keys` flags if you want to probe different shapes or
 shorter smoke tests.
 
-## Spec 1.0s
+## Spec v1.0
 
 ### Required Preamble
 - The document root must be a mapping containing `_naay_version: "1.0"` as its first key.
