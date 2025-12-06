@@ -112,6 +112,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TARGET_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag_name || format('manual-{0}', github.run_id) }}
+      TARGET_NAME: ${{ github.event_name == 'release' && github.event.release.name || github.event.inputs.release_name || github.event.inputs.tag_name || format('manual-{0}', github.run_id) }}
     steps:
       - name: Ensure checkout for tagging
         if: github.event_name == 'workflow_dispatch'
@@ -119,10 +122,7 @@ jobs:
       - name: Create tag (manual run)
         if: github.event_name == 'workflow_dispatch'
         run: |
-          TAG="${{ github.event.inputs.tag_name }}"
-          if [ -z "$TAG" ]; then
-            TAG="manual-${GITHUB_RUN_ID}"
-          fi
+          TAG="${TARGET_TAG}"
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git tag "$TAG"
@@ -138,8 +138,9 @@ jobs:
       - name: Attach files to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag_name || format('manual-{0}', github.run_id) }}
-          name: ${{ github.event.inputs.release_name || github.event.inputs.tag_name || format('manual-{0}', github.run_id) }}
+          tag_name: ${{ env.TARGET_TAG }}
+          name: ${{ env.TARGET_NAME }}
           files: dist/*
+          token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
