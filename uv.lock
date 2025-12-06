@@ -129,7 +129,7 @@ wheels = [
 
 [[package]]
 name = "naay"
-version = "2025.12.5.post0"
+version = "2025.12.6.post0"
 source = { editable = "." }
 
 [package.optional-dependencies]

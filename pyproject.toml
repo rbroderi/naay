@@ -1,6 +1,6 @@
 [project]
 name = "naay"
-version = "2025.12.6-0"
+version = "2025.12.6-1"
 description = "A fast YAML subset parser/dumper for Python powered by Rust"
 readme = "README.md"
 license = { text = "LGPL-3.0-or-later" }

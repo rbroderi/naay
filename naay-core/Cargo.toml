@@ -11,3 +11,9 @@ documentation = "https://rbroderi.github.io/naay"
 [dependencies]
 thiserror = "2"
 tailcall = "1.0"
+
+[profile.release]
+debug-assertions = false
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
