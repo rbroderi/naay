@@ -32,9 +32,17 @@ jobs:
             label: linux-x86_64
             artifact: wheels-linux
             build_sdist: true
+          - os: ubuntu-latest
+            label: linux-aarch64
+            artifact: wheels-linux-arm
+            build_sdist: false
           - os: macos-13
             label: macos-x86_64
             artifact: wheels-macos
+            build_sdist: false
+          - os: macos-latest
+            label: macos-arm64
+            artifact: wheels-macos-arm
             build_sdist: false
           - os: windows-latest
             label: windows-x86_64
