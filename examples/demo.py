@@ -18,7 +18,7 @@ from ruamel.yaml.comments import CommentedSeq
 import naay
 from _naay_pure import parser as naay_pure
 
-RUNS = 500
+RUNS = 2000
 TARGETS: tuple[dict[str, str | int | bool], ...] = (
     {"filename": "stress_test0.yaml", "runs": RUNS, "probe_naay": False},
     {

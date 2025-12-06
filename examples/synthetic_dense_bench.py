@@ -38,7 +38,8 @@ def _bench_dump(callback: Callable[[], object], runs: int) -> float:
 
 
 def _wrap_text_dump(
-    dumps_func: Callable[[object], str], data: object
+    dumps_func: Callable[[object], str],
+    data: object,
 ) -> Callable[[], str]:
     return lambda: dumps_func(data)
 
@@ -75,7 +76,8 @@ def _run_benchmarks(runs: int, keys: int) -> list[str]:
     lines.append(_format_line("naay.loads", _bench_load(naay.loads, doc, runs)))
     lines.append(
         _format_line(
-            "naay.dumps", _bench_dump(_wrap_text_dump(naay.dumps, naay_data), runs)
+            "naay.dumps",
+            _bench_dump(_wrap_text_dump(naay.dumps, naay_data), runs),
         ),
     )
     lines.append(

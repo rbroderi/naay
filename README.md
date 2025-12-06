@@ -69,23 +69,23 @@ Numbers below were collected on Windows 11 (Ryzen 9 7950X / Python 3.13.2) using
 small synthetic benchmark (snippet shown later). Each value is the average wall
 clock time per operation.
 
-### `examples/stress_test0.yaml` (500 runs)
+### `examples/stress_test0.yaml` (2,000 runs)
 
 | Engine              | Load avg (ms) | Dump avg (ms) | Relative to `naay (native)` |
 |---------------------|---------------|---------------|-----------------------------|
-| `naay (native)`     | **0.13**      | **0.06**      | baseline                    |
-| `naay (pure-python)`| 0.96          | 0.45          | ~7× slower loads, ~8× slower dumps (still >10× faster than PyYAML loads) |
-| PyYAML `safe_*`     | 10.64         | 7.91          | ~82× slower loads, ~132× slower dumps |
-| `ruamel.yaml` (safe)| 3.02          | 4.18          | ~23× slower loads, ~70× slower dumps |
+| `naay (native)`     | **0.09**      | **0.04**      | baseline                    |
+| `naay (pure-python)`| 0.64          | 0.29          | ~7× slower loads, ~7× slower dumps (still >10× faster than PyYAML loads) |
+| PyYAML `safe_*`     | 7.53          | 5.01          | ~84× slower loads, ~125× slower dumps |
+| `ruamel.yaml` (safe)| 1.59          | 2.34          | ~18× slower loads, ~58× slower dumps |
 
-### `examples/stress_test1.yaml` (20 runs, deeply nested)
+### `examples/stress_test1.yaml` (80 runs, deeply nested)
 
 | Engine              | Load avg (ms) | Dump avg (ms) | Notes |
 |---------------------|---------------|---------------|-------|
-| `naay (native)`     | **4.91**      | **5.89**      | baseline |
-| `naay (pure-python)`| 9.82          | 7.78          | ~2× slower than native; still stack-safe |
+| `naay (native)`     | **2.62**      | **3.85**      | baseline |
+| `naay (pure-python)`| 5.35          | 4.69          | ~2× slower loads, ~1.2× slower dumps; still stack-safe |
 | PyYAML `safe_*`     | fail          | fail          | hit Python recursion depth on the first iteration |
-| `ruamel.yaml` (safe)| 33.80         | fail          | ~7× slower on load; dump also exceeded recursion depth |
+| `ruamel.yaml` (safe)| 18.82         | fail          | ~7× slower on load; dump also exceeded recursion depth |
 
 The pure-Python rows above use `_naay_pure.parser`, the fallback shipped alongside the wheel
 for platforms where compiling the Rust extension is not possible.
@@ -94,15 +94,15 @@ for platforms where compiling the Rust extension is not possible.
 
 | Engine              | Load avg (ms) | Dump avg (ms) |
 |---------------------|---------------|---------------|
-| `naay (native)`     | **0.88**      | **0.68**      |
-| `naay (pure-python)`| 6.01          | 3.23          |
-| PyYAML `safe_*`     | 82.41         | 45.77         |
-| `ruamel.yaml` (safe)| 19.96         | 40.09         |
+| `naay (native)`     | **0.63**      | **0.45**      |
+| `naay (pure-python)`| 4.16          | 2.06          |
+| PyYAML `safe_*`     | 51.90         | 32.49         |
+| `ruamel.yaml` (safe)| 15.06         | 28.31         |
 
-Even on this uniform synthetic workload, `naay (native)` loads about **93× faster than
-PyYAML** and **23× faster than ruamel**, while dumping is **68× faster** than PyYAML and
-**59× faster** than ruamel. The pure-Python fallback still loads ~13× faster than PyYAML and
-dumps ~14× faster, so the all-Python wheel remains viable when the Rust extension is unavailable.
+Even on this uniform synthetic workload, `naay (native)` loads about **82× faster than
+PyYAML** and **24× faster than ruamel**, while dumping is **72× faster** than PyYAML and
+**62× faster** than ruamel. The pure-Python fallback still loads ~12× faster than PyYAML and
+dumps ~16× faster, so the all-Python wheel remains viable when the Rust extension is unavailable.
 
 The synthetic numbers come from `examples/synthetic_dense_bench.py`. Reproduce them with:
 
@@ -113,7 +113,7 @@ uv run python examples/synthetic_dense_bench.py --runs 200 --keys 1500
 The helper accepts `--runs` and `--keys` flags if you want to probe different shapes or
 shorter smoke tests.
 
-## Spec
+## Spec 1.0s
 
 ### Required Preamble
 - The document root must be a mapping containing `_naay_version: "1.0"` as its first key.
