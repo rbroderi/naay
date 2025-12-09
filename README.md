@@ -4,7 +4,7 @@
 ![License](https://img.shields.io/badge/license-LGPL--3.0--or--later-blue)
 ![Platforms](https://img.shields.io/badge/os-windows%20%7C%20linux%20%7C%20macOS-brightgreen)
 ![GitHub release](https://img.shields.io/github/v/release/rbroderi/naay?label=release)
-
+![Dead Code Free](https://img.shields.io/badge/Dead_Code-Free-brightgreen?logo=moleculer&logoColor=white)   
 ## Vote naay to complicated yaml syntax and parsers.
 
 The intent of this project is to define a tiny strict YAML subset where **all values are strings**, plus support for `|` block literals,

@@ -44,7 +44,7 @@ lint-unsafe:
     uv run ruff check . --fix --unsafe-fixes
 
 metrics:
-    uv run skylos . --quality
+    uv run skylos src/naay --quality
     uv run radon cc . -a -nb
     uv run radon mi . -nb
 
@@ -53,7 +53,7 @@ quality:
     uv run ruff check . --fix
     uv run basedpyright --level error
     uv run radon cc . -a -nb
-    uv run skylos . --quality --danger
+    uv run skylos src/naay --quality --danger
 
 pytest:
     uv run pytest
