@@ -7,12 +7,12 @@
 ![Dead Code Free](https://img.shields.io/badge/Dead_Code-Free-brightgreen?logo=moleculer&logoColor=white)   
 ## Vote naay to complicated yaml syntax and parsers.
 
-The intent of this project is to define a tiny strict YAML subset where **all values are strings**, plus support for `|` block literals,
-anchors, merges, and YAML-compatible single-line comments — implemented with a Rust core and a
-Python binding. Standalone `# ...` lines and inline comments attached to mappings/sequences are
-retained in their original positions when you round-trip through the Rust core. Speed of parsing and dumping is a chief concern. As well as a very small syntax.
-The syntax used retains full compatablility with yaml while only supporting a very limited subset of yaml.
-Good for configs or basic human editable data transfer.
+naay defines a deliberately tiny, strict subset of YAML where **every value is a string** yet you
+still get `|` block literals, anchors, merges, and inline/standalone comments. The Rust core (with
+its Python binding) preserves comment positions when you round-trip and keeps parsing/dumping
+extremely fast while enforcing `_naay_version: "<release>"` at the root. It is ideal for
+human-editable configs or lightweight data hand-offs when you want YAML familiarity without the
+sprawling feature set. retains full yaml compatibility for use with other parsers. See https://github.com/rbroderi/ysaqml for its use in a yaml backed sql database.
 
 This version enforces a root `_naay_version` field that must match the current release string:
 
