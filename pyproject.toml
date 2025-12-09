@@ -34,6 +34,8 @@ dev = [
     "radon>=6.0.1",
     "skylos>=2.5.3",
     "pytest-cov>=7.0.0",
+    "ruff>=0.14.8",
+    "basedpyright>=1.35.0",
 ]
 beartype = [
     "beartype>=0.22.8",
@@ -101,10 +103,11 @@ ignore = [
     "S603",    # subprocess without shell=True (too strict)
     "S607",    # Starting a process with a partial path (too strict)
     "CPY001",  # License missing or incorrect (handled in pyproject.toml)
-    "T201",   # print found (allowed for debugging)
+    "T201",    # print found (allowed for debugging)
     "ANN401",  # Any allowed
-    "FBT001", # Allow boolean flags
-    "S404", # Allow use of subprocess module
+    "FBT001",  # Allow boolean flags
+    "S404",    # Allow use of subprocess module
+    "COM812",  # rule may cause conflicts when used with the formatter
 ]
 
 
@@ -186,7 +189,7 @@ markers = [
 # COVERAGE CONFIGURATION
 # ============================================================
 [tool.coverage.run]
-source = ["."]
+source = ["src/naay"]
 branch = true  # STRICT: Enable branch coverage
 omit = [
     "*/tests/*",
@@ -195,13 +198,16 @@ omit = [
     "*/.venv/*",
     "*/venv/*",
     "*/scripts/*",
+    "examples/*",
+    "src/_naay_pure/*",
+    "naay-py/*",
 ]
 
 [tool.coverage.report]
 precision = 2
 show_missing = true
 skip_covered = false
-fail_under = 80  # STRICT: Require 80% coverage
+fail_under = 100  # STRICT: Require perfect coverage on measured modules
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",

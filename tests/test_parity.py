@@ -12,7 +12,7 @@ from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.comments import CommentedSeq
 
 import naay
-from _naay_pure import parser as pure_parser
+from _naay_pure import parser as pure_parser  # noqa: PLC2701
 
 native_module: Any | None
 

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 from typing import TextIO
+from typing import cast
 
 import ruamel.yaml
 import yaml as pyyaml
@@ -347,10 +348,11 @@ def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> Non
                 print(f"{label} top-level keys:", keys)
             else:
                 print(f"{label} top-level keys: skipped")
-            if result.dump_sample is not None and result.data is not None:
+            resulta: Any = cast("Any", result)
+            if resulta.dump_sample is not None and resulta.data is not None:
                 try:
-                    data: Any = result.data
-                    stable = result.variant.loads(result.dump_sample) == data
+                    data: Any = resulta.data
+                    stable = resulta.variant.loads(resulta.dump_sample) == data
                 except (
                     Exception  # noqa: BLE001
                 ) as exc:  # pragma: no cover - defensive guard
