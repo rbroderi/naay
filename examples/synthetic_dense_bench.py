@@ -1,16 +1,24 @@
+"""Benchmark naay vs other YAML engines using synthetic dense documents."""
+
 from __future__ import annotations
 
 import argparse
 import io
 import time
-from collections.abc import Callable
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import ruamel.yaml
 import yaml as pyyaml
 
 import naay
-from _naay_pure import parser as naay_pure
+from _naay_pure import (  # type: ignore[import-untyped]
+    parser as naay_pure,  # noqa: PLC2701
+)
+
+OK = 0
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from collections.abc import Sequence
 
 
 def _build_doc(keys: int) -> str:
@@ -38,7 +46,7 @@ def _bench_dump(callback: Callable[[], object], runs: int) -> float:
 
 
 def _wrap_text_dump(
-    dumps_func: Callable[[object], str],
+    dumps_func: Callable[..., str],
     data: object,
 ) -> Callable[[], str]:
     return lambda: dumps_func(data)
@@ -73,43 +81,31 @@ def _run_benchmarks(runs: int, keys: int) -> list[str]:
         f"Runs: {runs}",
         f"Scalar keys: {keys}",
     ]
-    lines.append(_format_line("naay.loads", _bench_load(naay.loads, doc, runs)))
-    lines.append(
+    lines.extend((
+        _format_line("naay.loads", _bench_load(naay.loads, doc, runs)),
         _format_line(
             "naay.dumps",
             _bench_dump(_wrap_text_dump(naay.dumps, naay_data), runs),
         ),
-    )
-    lines.append(
         _format_line("naay_pure.loads", _bench_load(naay_pure.loads, doc, runs)),
-    )
-    lines.append(
         _format_line(
             "naay_pure.dumps",
             _bench_dump(_wrap_text_dump(naay_pure.dumps, naay_pure_data), runs),
         ),
-    )
-    lines.append(
         _format_line("PyYAML safe_load", _bench_load(pyyaml.safe_load, doc, runs)),
-    )
-    lines.append(
         _format_line(
             "PyYAML safe_dump",
             _bench_dump(_wrap_text_dump(pyyaml.safe_dump, pyyaml_data), runs),
         ),
-    )
-    lines.append(
         _format_line(
             "ruamel safe_load",
             _bench_load(ruamel_loader.load, doc, runs),  # type: ignore[arg-type]
         ),
-    )
-    lines.append(
         _format_line(
             "ruamel safe_dump",
-            _bench_dump(_wrap_stream_dump(ruamel_dumper.dump, ruamel_data), runs),
+            _bench_dump(_wrap_stream_dump(ruamel_dumper.dump, ruamel_data), runs),  # type: ignore[arg-type]
         ),
-    )
+    ))
     return lines
 
 
@@ -131,11 +127,23 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run YAML library benchmarks and print results.
+
+    Parameters
+    ----------
+    argv : Sequence[str] | None, optional
+        Command line arguments. If None, uses sys.argv.
+
+    Returns:
+    -------
+    int
+        Exit code (0 for success).
+    """
     parser = _build_parser()
     args = parser.parse_args(argv)
     for line in _run_benchmarks(runs=args.runs, keys=args.keys):
         print(line)
-    return 0
+    return OK
 
 
 if __name__ == "__main__":

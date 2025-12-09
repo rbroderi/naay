@@ -1,3 +1,5 @@
+"""Demo script to benchmark naay against other YAML parsers."""
+
 import io
 import math
 import os
@@ -16,7 +18,7 @@ from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.comments import CommentedSeq
 
 import naay
-from _naay_pure import parser as naay_pure
+from _naay_pure import parser as naay_pure  # noqa: PLC2701
 
 RUNS = 2000
 TARGETS: tuple[dict[str, str | int | bool], ...] = (
@@ -31,17 +33,13 @@ TARGETS: tuple[dict[str, str | int | bool], ...] = (
 
 @dataclass(frozen=True)
 class NaayVariant:
-    """
-    A variant of the naay YAML parser for benchmarking.
+    """A variant of the naay YAML parser for benchmarking.
 
-    :param label: The display name for this variant.
-    :type label: str
-    :param loads: Function to parse YAML text into Python objects.
-    :type loads: Callable[[str], Any]
-    :param dumps: Function to serialize Python objects to YAML text.
-    :type dumps: Callable[[Any], str]
-    :param module_path: The Python module path for this variant.
-    :type module_path: str
+    Args:
+        label: The display name for this variant.
+        loads: Function to parse YAML text into Python objects.
+        dumps: Function to serialize Python objects to YAML text.
+        module_path: The Python module path for this variant.
     """
 
     label: str
@@ -52,15 +50,12 @@ class NaayVariant:
 
 @dataclass(slots=True)
 class NaayResult:
-    """
-    Result container for a naay variant benchmark run.
+    """Result container for a naay variant benchmark run.
 
-    :param variant: The naay variant that was benchmarked.
-    :type variant: NaayVariant
-    :param data: The parsed YAML data, or None if parsing failed.
-    :type data: Any | None
-    :param dump_sample: A sample of the dumped YAML output, or None if dumping failed.
-    :type dump_sample: str | None
+    Args:
+        variant: The naay variant that was benchmarked.
+        data: The parsed YAML data, or None if parsing failed.
+        dump_sample: A sample of the dumped YAML output, or None if dumping failed.
     """
 
     variant: NaayVariant
@@ -94,7 +89,11 @@ NAAY_VARIANTS: tuple[NaayVariant, ...] = _build_naay_variants()
 
 
 def _naay_supported_for(path: pathlib.Path, *, module_path: str, label: str) -> bool:
-    """Check whether a given naay implementation can load the file."""
+    """Check whether a given naay implementation can load the file.
+
+    Returns:
+        True if the naay variant can load the file, False otherwise.
+    """
     script = (
         "import importlib, pathlib, sys;"
         "text = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8');"
@@ -125,7 +124,11 @@ def _naay_supported_for(path: pathlib.Path, *, module_path: str, label: str) -> 
 
 
 def _read_yaml_text(path: pathlib.Path) -> str:
-    """Read the YAML file, ensuring the handle is closed each time."""
+    """Read the YAML file, ensuring the handle is closed each time.
+
+    Returns:
+        The contents of the YAML file as a string.
+    """
     with path.open("r", encoding="utf-8") as handle:
         return handle.read()
 
@@ -137,7 +140,13 @@ def _time_repeated_loads(
     path: pathlib.Path,
     runs: int,
 ) -> tuple[Any | None, float]:
-    """Run loader(text) ``runs`` times, reopening the file for every iteration."""
+    """Run loader(text) ``runs`` times, reopening the file for every iteration.
+
+    Returns:
+        A tuple of (parsed_data, average_time_seconds) where parsed_data is the result
+        from the loader or None if loading failed, and average_time_seconds is the
+        average time taken per load operation.
+    """
     total = 0.0
     result = None
     for iteration in range(runs):
@@ -146,7 +155,7 @@ def _time_repeated_loads(
         try:
             result = loader(text)
             total += perf_counter() - start
-        except Exception as exc:  # pragma: no cover - stress fallback
+        except Exception as exc:  # pragma: no cover - stress fallback  # noqa: BLE001
             print(f"{label} failed on iteration {iteration + 1}: {exc}")
             return None, math.inf
     avg = total / runs
@@ -160,15 +169,23 @@ def _time_repeated_dumps(
     data: Any,
     runs: int,
 ) -> tuple[str | None, float]:
-    """Run dumper(data, stream) ``runs`` times, writing to os.devnull each time."""
+    """Run dumper(data, stream) ``runs`` times, writing to os.devnull each time.
+
+    Returns:
+        A tuple of (sample_output, average_time_seconds) where sample_output is a
+        sample of the dumped output or None if dumping failed, and average_time_seconds
+        is the average time taken per dump operation.
+    """
     total = 0.0
     for iteration in range(runs):
-        with open(os.devnull, "w", encoding="utf-8") as handle:
+        with pathlib.Path(os.devnull).open("w", encoding="utf-8") as handle:
             start = perf_counter()
             try:
                 dumper(data, handle)
                 total += perf_counter() - start
-            except Exception as exc:  # pragma: no cover - stress fallback
+            except (
+                Exception  # noqa: BLE001
+            ) as exc:  # pragma: no cover - stress fallback
                 print(f"{label} failed on iteration {iteration + 1}: {exc}")
                 return None, math.inf
 
@@ -195,19 +212,25 @@ def _pyyaml_dump_to_stream(data: Any, stream: TextIO) -> None:
 
 
 def _as_plain(value: Any) -> Any:
-    """Convert ruamel Commented* containers into plain Python types."""
-    if isinstance(value, CommentedMap):
-        return {k: _as_plain(v) for k, v in value.items()}  # type: ignore[misc, no-any-return]
-    if isinstance(value, CommentedSeq):
-        return [_as_plain(v) for v in value]  # pyright: ignore[reportUnknownVariableType]
-    if isinstance(value, dict):
-        return {k: _as_plain(v) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType]
-    if isinstance(value, list):
-        return [_as_plain(v) for v in value]  # pyright: ignore[reportUnknownVariableType]
-    return value
+    """Convert ruamel Commented* containers into plain Python types.
+
+    Returns:
+        The input value converted to plain Python types (dict, list, or unchanged).
+    """
+    match value:
+        case CommentedMap():
+            return {k: _as_plain(v) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+        case CommentedSeq():
+            return [_as_plain(v) for v in value]  # pyright: ignore[reportUnknownVariableType]
+        case dict():
+            return {k: _as_plain(v) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType]
+        case list():
+            return [_as_plain(v) for v in value]  # pyright: ignore[reportUnknownVariableType]
+        case _:
+            return value
 
 
-def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> None:
+def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> None:  # noqa: C901, PLR0912, PLR0914, PLR0915
     print(f"\n===== Benchmarking {yaml_path.name} =====")
     timings: list[tuple[str, float]] = []
     naay_results: list[NaayResult] = []
@@ -256,7 +279,6 @@ def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> Non
         runs=runs,
     )
     timings.append(("PyYAML safe_load", elapsed))
-    # pprint(pyyaml_data)
 
     print("\n=== PyYAML safe_dump ===")
     if pyyaml_data is not None:
@@ -270,25 +292,31 @@ def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> Non
         print("PyYAML safe_dump skipped: load failed")
         _pyyaml_dump, elapsed = None, math.inf
     timings.append(("PyYAML safe_dump", elapsed))
-    # print(pyyaml_dump)
 
     print("\n=== ruamel.yaml (safe) ===")
     ruamel_loader = ruamel.yaml.YAML(typ="safe")
+
+    def _ruamel_load(text: str) -> Any:
+        return ruamel_loader.load(io.StringIO(text))  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+
     ruamel_data, elapsed = _time_repeated_loads(
         "ruamel safe_load",
-        ruamel_loader.load,  # type: ignore
+        _ruamel_load,
         path=yaml_path,
         runs=runs,
     )
     timings.append(("ruamel safe_load", elapsed))
-    # pprint(_as_plain(ruamel_data))
 
     print("\n=== ruamel.yaml dump (safe) ===")
     ruamel_dumper = ruamel.yaml.YAML(typ="safe")
+
+    def _ruamel_dump_wrapper(data: Any, stream: TextIO) -> None:
+        ruamel_dumper.dump(data, stream)  # pyright: ignore[reportUnknownMemberType]
+
     if ruamel_data is not None:
         _ruamel_dump, elapsed = _time_repeated_dumps(
             "ruamel safe_dump",
-            ruamel_dumper.dump,  # type: ignore
+            _ruamel_dump_wrapper,
             ruamel_data,
             runs,
         )
@@ -296,7 +324,6 @@ def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> Non
         print("ruamel safe_dump skipped: load failed")
         _ruamel_dump, elapsed = None, math.inf
     timings.append(("ruamel safe_dump", elapsed))
-    # print(ruamel_dump)
 
     print("\n=== Comparison summary ===")
     ruamel_plain = None
@@ -309,10 +336,10 @@ def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> Non
     print(
         "PyYAML matches ruamel safe output:",
         ruamel_plain == pyyaml_plain
-        if None not in (ruamel_plain, pyyaml_plain)
+        if None not in (ruamel_plain, pyyaml_plain)  # noqa: PLR6201 # unhashable types
         else "skipped",
     )
-    if naay_results:
+    if naay_results:  # noqa: PLR1702
         for result in naay_results:
             label = result.variant.label
             if isinstance(result.data, dict):
@@ -342,6 +369,7 @@ def _benchmark_file(yaml_path: pathlib.Path, runs: int, probe_naay: bool) -> Non
 
 
 def main() -> None:
+    """Run benchmarks for all configured YAML test files."""
     here = pathlib.Path(__file__).resolve().parent
     for target in TARGETS:
         filename = target["filename"]

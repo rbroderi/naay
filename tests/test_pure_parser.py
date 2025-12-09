@@ -7,7 +7,7 @@ import pathlib
 
 import pytest
 
-from _naay_pure import parser
+from _naay_pure import parser  # noqa: PLC2701
 
 
 def _fixture_text(name: str) -> str:

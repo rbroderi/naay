@@ -27,3 +27,33 @@ tag-release:
     git tag -a $tag -m "Release $tag";\
     git push origin HEAD;\
     git push origin $tag
+
+format:
+    uv run ruff format .
+    uv run ruff check . --fix
+    uv run basedpyright --level error
+
+check:
+    uv run ruff check .
+    uv run basedpyright --level error
+
+lint:
+    uv run ruff check . --fix
+
+lint-unsafe:
+    uv run ruff check . --fix --unsafe-fixes
+
+metrics:
+    uv run skylos . --quality
+    uv run radon cc . -a -nb
+    uv run radon mi . -nb
+
+quality:
+    uv run ruff format .
+    uv run ruff check . --fix
+    uv run basedpyright --level error
+    uv run radon cc . -a -nb
+    uv run skylos . --quality --danger
+
+pytest:
+    uv run pytest

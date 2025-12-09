@@ -30,6 +30,10 @@ dev = [
     "types-pyyaml>=6.0.12.20250915",
     "mypy>=1.19.0",
     "pytest>=8.3",
+    "prek>=0.2.20",
+    "radon>=6.0.1",
+    "skylos>=2.5.3",
+    "pytest-cov>=7.0.0",
 ]
 beartype = [
     "beartype>=0.22.8",
@@ -45,7 +49,19 @@ python-packages = ["naay", "_naay_pure"]
 module-name = "_naay_native"
 python-source = "src"
 
+
+# ============================================================
+# RUFF CONFIGURATION - MAXIMUM STRICTNESS
+# ============================================================
+
 [tool.ruff]
+target-version = "py313"
+line-length = 88
+indent-width = 4
+fix = true
+show-fixes = true
+preview = true  # Enable preview rules (PLR1702, etc.)
+
 # Exclude a variety of commonly ignored directories.
 exclude = [
     ".bzr",
@@ -76,79 +92,253 @@ exclude = [
     "venv",
     ".venv",
 ]
-
-# Same as Black.
-line-length = 88
-indent-width = 4
-
-# Assume Python 3.13
-target-version = "py313"
-
 [tool.ruff.lint]
 # Enable all rules by default.
 select = ["ALL"]
-
-# Ignore specific rules.
+unfixable = []
 ignore = [
-    "TC006",
-    "B024",
-    "PIE790",
-    "T201",
-    "PYI013",
-    "TC003",
-    "PLC0414",
-    "ERA001",
-    "T203",
-    "ANN401",
-    "TC002",
-    "TD002",
-    "TD003",
-    "FIX002",
-    "FBT001",
-    "FBT002",
-    "D203",
-    "D212",
-    "S101",
+    "E501",    # Line too long (formatter handles this)
+    "S603",    # subprocess without shell=True (too strict)
+    "S607",    # Starting a process with a partial path (too strict)
+    "CPY001",  # License missing or incorrect (handled in pyproject.toml)
+    "T201",   # print found (allowed for debugging)
+    "ANN401",  # Any allowed
+    "FBT001", # Allow boolean flags
+    "S404", # Allow use of subprocess module
 ]
 
-# Allow fix for all enabled rules (when `--fix`) is provided.
-fixable = ["ALL"]
-unfixable = []
+
+# Complexity limits (anti-LLM-slop)
+[tool.ruff.lint.mccabe]
+max-complexity = 10  # Maximum cyclomatic complexity
+
+[tool.ruff.lint.pylint]
+max-nested-blocks = 3  # Maximum nested block depth (PLR1702)
+
+# Per-file ignores
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",    # Allow assert in tests
+    "PLR2004", # Allow magic values in tests
+    "ANN",     # Don't require annotations in tests
+    "FBT",     # Allow boolean args in tests
+    "D103",    # Allow missing docstrings in tests
+    "D100",    # Allow missing docstrings in tests
+]
+"__init__.py" = [
+    "D100",  # Allow missing docstrings in __init__.py
+    "D104",  # Allow missing docstrings in __init__.py
+]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-type-checking]
+strict = true
+
 
 [tool.ruff.format]
-# Like Black, use double quotes for strings.
 quote-style = "double"
-
-# Like Black, indent with spaces, rather than tabs.
 indent-style = "space"
-
-# Like Black, respect magic trailing commas.
 skip-magic-trailing-comma = false
-
-# Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
-
 # Enable auto-formatting of code examples in docstrings.
 docstring-code-format = true
 
 # Set the line length limit used when formatting code snippets in docstrings.
 docstring-code-line-length = "dynamic"
 
-[tool.ruff.lint.isort]
-force-single-line = true
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = [
-    "D100",
-    "D101",
-    "D102",
-    "D103",
-    "D104",
-    "D105",
-    "D106",
-    "D107",
-    "ARG002",
-    "ARG001",
-    "ARG005",
-    "SLF001",
+# ============================================================
+# PYTEST CONFIGURATION
+# ============================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-W error",  # STRICT: Treat warnings as errors (catch deprecations early)
+    "--tb=short",
+    "--cov=.",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=80",  # STRICT: Require 80% coverage
 ]
+filterwarnings = [
+    "error",  # Treat all warnings as errors by default
+    # Uncomment to selectively ignore specific third-party warnings if needed:
+    # "ignore::DeprecationWarning:some_noisy_library",
+    # "ignore::UserWarning:another_library",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+# ============================================================
+# COVERAGE CONFIGURATION
+# ============================================================
+[tool.coverage.run]
+source = ["."]
+branch = true  # STRICT: Enable branch coverage
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/.venv/*",
+    "*/venv/*",
+    "*/scripts/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+fail_under = 80  # STRICT: Require 80% coverage
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "@overload",
+]
+
+# ============================================================
+# Basedpyright CONFIGURATION - MAXIMUM STRICTNESS
+# TypeScript strict mode equivalent
+# ============================================================
+[tool.basedpyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+
+# added by rbroderi
+reportAny = false
+reportUnusedCallResult = false
+
+# ============================================================
+# IMPORT AND MODULE CHECKS
+# ============================================================
+reportMissingImports = true
+reportMissingTypeStubs = true
+reportUndefinedVariable = true
+reportAssertAlwaysTrue = true
+reportInvalidStringEscapeSequence = true
+
+# ============================================================
+# STRICT NULL SAFETY (like TS strictNullChecks)
+# ============================================================
+reportOptionalSubscript = true
+reportOptionalMemberAccess = true
+reportOptionalCall = true
+reportOptionalIterable = true
+reportOptionalContextManager = true
+reportOptionalOperand = true
+reportExplicitAny = false
+reportIgnoreCommentWithoutRule = false
+reportPrivateLocalImportUsage = true
+# doest work # reportUnnecessaryTypeAnnotation = true
+
+# ============================================================
+# TYPE COMPLETENESS (like TS noImplicitAny + strictFunctionTypes)
+# ============================================================
+reportMissingParameterType = true
+reportMissingTypeArgument = true
+reportUnknownParameterType = true
+reportUnknownLambdaType = true
+reportUnknownArgumentType = true   # STRICT: Enable (can be noisy)
+reportUnknownVariableType = true   # STRICT: Enable (can be noisy)
+reportUnknownMemberType = true     # STRICT: Enable (can be noisy)
+reportUntypedFunctionDecorator = true
+reportUntypedClassDecorator = true
+reportUntypedBaseClass = true
+reportUntypedNamedTuple = true
+
+# ============================================================
+# CLASS AND INHERITANCE CHECKS
+# ============================================================
+reportIncompatibleMethodOverride = true
+reportIncompatibleVariableOverride = true
+reportInconsistentConstructor = true
+reportUninitializedInstanceVariable = true
+reportOverlappingOverload = true
+reportMissingSuperCall = true  # STRICT: Enable
+
+
+# ============================================================
+# CODE QUALITY (like TS noUnusedLocals + noUnusedParameters)
+# ============================================================
+reportPrivateUsage = true
+reportConstantRedefinition = true
+reportInvalidStubStatement = true
+reportIncompleteStub = true
+reportUnsupportedDunderAll = true
+reportUnusedClass = "error"        # STRICT: Error instead of warning
+reportUnusedFunction = "error"     # STRICT: Error instead of warning
+reportUnusedVariable = "error"     # STRICT: Error instead of warning
+reportUnusedImport = "error"       # STRICT: Error instead of warning
+reportDuplicateImport = "error"    # STRICT: Error instead of warning
+
+# ============================================================
+# UNNECESSARY CODE DETECTION
+# ============================================================
+reportUnnecessaryIsInstance = "error"         # STRICT: Error
+reportUnnecessaryCast = "error"               # STRICT: Error
+reportUnnecessaryComparison = "error"         # STRICT: Error
+reportUnnecessaryContains = "error"           # STRICT: Error
+reportUnnecessaryTypeIgnoreComment = "warning"  # STRICT: Error
+
+# ============================================================
+# FUNCTION/METHOD SIGNATURE STRICTNESS
+# ============================================================
+reportGeneralTypeIssues = true
+reportPropertyTypeMismatch = true
+reportFunctionMemberAccess = true
+reportCallInDefaultInitializer = true
+reportImplicitStringConcatenation = false
+
+# ============================================================
+# ADDITIONAL STRICT CHECKS (Progressive Enhancement)
+# ============================================================
+reportImplicitOverride = true    # STRICT: Require @override decorator (Python 3.12+)
+# does not work # reportShadowedImports = true     # STRICT: Detect shadowed imports
+reportDeprecated = "warning"     # Warn on deprecated usage
+
+# ============================================================
+# ADDITIONAL TYPE CHECKS
+# ============================================================
+reportImportCycles = "warning"
+
+# ==============================s==============================
+# EXCLUSIONS
+# ============================================================
+exclude = [
+    "**/__pycache__",
+    "**/node_modules",
+    ".git",
+    ".mypy_cache",
+    ".pyright_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    ".venv",
+    "venv",
+    "env",
+    "logs",
+    "output",
+    "data",
+    "build",
+    "dist",
+    "*.egg-info",
+]
+
+venvPath = "."
+venv = ".venv"

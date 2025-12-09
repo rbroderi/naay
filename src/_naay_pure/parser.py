@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Final
 from typing import Literal
 
 from naay import REQUIRED_VERSION
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 try:
-    from beartype.claw import beartype_this_package  # type: ignore[import]
+    from beartype.claw import beartype_this_package
 
     beartype_this_package()
 except ModuleNotFoundError:  # pragma: no cover - optional dependency
@@ -63,13 +66,24 @@ class _Context:
 
 
 def loads(text: str, /) -> YamlValue:
-    """Parse naay text into nested dict/list/scalar structures."""
+    """Parse naay text into nested dict/list/scalar structures.
+
+    Returns:
+        The parsed YAML value as nested dict/list/scalar structures.
+    """
     parser = _Parser(text)
     return parser.parse()
 
 
 def dumps(data: YamlValue, /) -> str:
-    """Serialize a naay-compatible tree back into text."""
+    """Serialize a naay-compatible tree back into text.
+
+    Returns:
+        The serialized YAML text representation.
+
+    Raises:
+        NaayDumpError: If serialization fails due to unsupported types.
+    """
     dumper = _Dumper()
     try:
         dumper.write_value(data, 0)
@@ -80,6 +94,7 @@ def dumps(data: YamlValue, /) -> str:
 
 class _Parser:
     def __init__(self, text: str) -> None:
+        super().__init__()
         self.lines: list[Line] = self._preprocess(text)
         self.index = 0
         self.anchors: dict[str, YamlValue] = {}
@@ -298,7 +313,7 @@ class _Parser:
         required: bool,
         anchor_name: str | None = None,
     ) -> bool:
-        parent_list = context.container  # type: ignore[assignment]
+        parent_list = context.container
         return self._start_child_context(
             parent_container=parent_list,
             is_list=True,
@@ -319,7 +334,7 @@ class _Parser:
         required: bool,
         anchor_name: str | None = None,
     ) -> bool:
-        parent_map = context.container  # type: ignore[assignment]
+        parent_map = context.container
         return self._start_child_context(
             parent_container=parent_map,
             is_list=False,
@@ -466,7 +481,7 @@ class _Parser:
             self._consume_until_depth(stack, before_len)
         return mapping
 
-    def _parse_inline_value(  # noqa: PLR0913
+    def _parse_inline_value(  # noqa: PLR0913, PLR0917
         self,
         vpart: str,
         line: Line,
@@ -476,15 +491,17 @@ class _Parser:
         key: str,
     ) -> YamlValue:
         min_quote_len: Final = 2
-        if (
+        is_double_quoted = (
             vpart.startswith('"')
             and vpart.endswith('"')
             and len(vpart) >= min_quote_len
-        ) or (
+        )
+        is_single_quoted = (
             vpart.startswith("'")
             and vpart.endswith("'")
             and len(vpart) >= min_quote_len
-        ):
+        )
+        if is_double_quoted or is_single_quoted:
             return _strip_quotes(vpart)
         if vpart == "|":
             return self._parse_block_scalar(expected_indent)
@@ -554,7 +571,8 @@ class _Parser:
             raise NaayParseError(msg)
         return _clone_value(self.anchors[name])
 
-    def _looks_like_seq(self, line: Line) -> bool:
+    @staticmethod
+    def _looks_like_seq(line: Line) -> bool:
         return line.content.startswith("-") and (
             len(line.content) == 1 or line.content[1].isspace()
         )
@@ -565,7 +583,8 @@ class _Parser:
             idx += 1
         return idx
 
-    def _enforce_root_version(self, value: YamlValue, _line_no: int) -> None:
+    @staticmethod
+    def _enforce_root_version(value: YamlValue, _line_no: int) -> None:
         if not isinstance(value, dict):
             msg = "root of document must be a mapping"
             raise NaayParseError(msg)
@@ -599,6 +618,7 @@ class _Parser:
 
 class _Dumper:
     def __init__(self) -> None:
+        super().__init__()
         self._parts: list[str] = []
         self._tasks: list[tuple[str, tuple[Any, ...]]] = []
 
@@ -753,11 +773,13 @@ def _parse_key(raw: str) -> str:
 
 def _strip_quotes(value: str) -> str:
     min_quote_len: Final = 2
-    if (
+    is_double_quoted = (
         value.startswith('"') and value.endswith('"') and len(value) >= min_quote_len
-    ) or (
+    )
+    is_single_quoted = (
         value.startswith("'") and value.endswith("'") and len(value) >= min_quote_len
-    ):
+    )
+    if is_double_quoted or is_single_quoted:
         return value[1:-1]
     return value
 
